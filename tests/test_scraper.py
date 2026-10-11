@@ -614,7 +614,7 @@ class TestOla(unittest.TestCase):
 class TestLookupPage(unittest.TestCase):
     def test_data_is_embedded_safely(self):
         evil = Org(name='Bad </script><script>alert(1)</script> Trust', source="Web search",
-                   district="Udupi", website="javascript:alert(1)",
+                   district="Udupi", website="javascript:alert(1)", source_urls=["https://example.org/bad"],
                    social=["javascript:alert(2)", "https://instagram.com/ok"],
                    people=[{"key": "x", "name": "Asha Rao", "role": "Founder", "source": "javascript:x"}])
         html = lookup_page.build([evil])
@@ -626,6 +626,18 @@ class TestLookupPage(unittest.TestCase):
         self.assertEqual(rec["s"], ["https://instagram.com/ok"])
         self.assertEqual(rec["pp"][0]["u"], "")
         self.assertIn("alert(1)", rec["n"])  # kept as text, shown with textContent
+
+    def test_scraped_data_is_tidied_for_the_site(self):
+        dash = chr(0x2013)
+        a = Org(name="Jeev Daya " + dash + " Gaushala", source="Ola Maps", sources=["Ola Maps"], state="Rajasthan",
+                address="Sanganer, Jaipur, Rajasthan 302029", lat="26.8", lon="75.8")
+        b = Org(name="Jeev Daya " + dash + " Gaushala", source="Ola Maps", sources=["Ola Maps"], state="Rajasthan",
+                address="Sanganer, Jaipur, Rajasthan 302029", lat="26.81", lon="75.8", phones=["+91 99999 00000"])
+        nothing = Org(name="Mystery Animal Trust", source="Web search")
+        recs = lookup_page.payload([a, b, nothing])["orgs"]
+        self.assertEqual([r["n"] for r in recs], ["Jeev Daya - Gaushala"])
+        self.assertEqual(recs[0]["p"], ["+91 99999 00000"], "the fuller duplicate is kept")
+        self.assertEqual((recs[0]["st"], recs[0]["d"]), ("Rajasthan", "Jaipur"))
 
     def test_record_fields(self):
         o = Org(name="Captain's Animal Care Trust", source="AWBI recognised list", confidence="high",

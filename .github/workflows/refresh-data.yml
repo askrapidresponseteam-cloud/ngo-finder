@@ -58,6 +58,7 @@ jobs:
         run: python -m scraper --ola-check
 
       - name: Run the scraper
+        id: scrape
         run: |
           if [ -n "$STATES" ]; then
             python -m scraper --out output --site-dir site --no-places --lookup-max 300 --people-max 200 --states "$STATES"
@@ -66,7 +67,18 @@ jobs:
           fi
 
       - name: Check the website data before publishing
+        id: check
         run: python check_site.py
+
+      - name: If the check failed, keep the new data on a review branch
+        if: failure() && steps.check.outcome == 'failure'
+        run: |
+          git config user.name "ngo-finder-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git checkout -B refresh-review
+          git add -f site output
+          git commit -m "Data that failed the site check ($(date -u +%Y-%m-%d))" || true
+          git push -f origin refresh-review
 
       - name: Save the spreadsheet and run log
         if: always()

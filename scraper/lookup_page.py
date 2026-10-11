@@ -34,6 +34,41 @@ def _host(u):
     return (urlparse(u).netloc or "").replace("www.", "")
 
 
+# Long dashes (figure dash to horizontal bar) are never shown; scraped names use plain hyphens.
+LONG_DASHES = {c: "-" for c in (0x2012, 0x2013, 0x2014, 0x2015)}
+
+
+def _tidy(value):
+    if isinstance(value, str):
+        return value.translate(LONG_DASHES)
+    if isinstance(value, list):
+        return [_tidy(v) for v in value]
+    if isinstance(value, dict):
+        return {k: _tidy(v) for k, v in value.items()}
+    return value
+
+
+def _valid_place(rec):
+    st = rec["st"]
+    if st != "Unknown" and st not in geo.states():
+        rec["st"], rec["d"] = "Unknown", "Unknown"
+    elif rec["d"] != "Unknown" and rec["d"] not in geo.districts_of(st):
+        rec["d"] = "Unknown"
+    return rec
+
+
+def _dedupe(records):
+    """Same name, state, district and AWBI code twice: keep the fuller record."""
+    out = {}
+    for r in records:
+        key = (r["n"].lower(), r["st"], r["d"], r["ac"])
+        old = out.get(key)
+        if old is None or len(json.dumps(r)) > len(json.dumps(old)):
+            out[key] = r
+    keep = set(id(r) for r in out.values())
+    return [r for r in records if id(r) in keep]
+
+
 def record(org):
     cats = [c for c in (org.categories or categories(org.name, org.snippet, " ".join(org.aka)))
             if c in ("animal", "wildlife", "cattle")]
@@ -97,7 +132,8 @@ def state_shapes():
 
 
 def payload(orgs, generated=None):
-    data = [record(o) for o in sorted(orgs, key=sort_key)]
+    data = _dedupe([_valid_place(_tidy(record(o))) for o in sorted(orgs, key=sort_key)])
+    data = [r for r in data if r["sr"] or r["m"] or r["ad"]]  # nothing to check it against: leave out
     meta = {
         "date": (generated or date.today()).strftime("%d %b %Y").lstrip("0"),
         "awbi_date": SNAPSHOT_DATE,

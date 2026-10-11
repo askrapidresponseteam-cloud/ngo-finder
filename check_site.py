@@ -67,9 +67,10 @@ if not errors:
         errors.append("Ola Maps data present but the Ola Maps credit is missing")
 
 if errors:
-    print("Site check FAILED:")
+    print("Site check FAILED ({} problems):".format(len(errors)))
     for e in errors[:40]:
-        print("  - " + e)
+        # On GitHub, each problem also shows as an annotation on the run.
+        print(("::error::" if os.environ.get("GITHUB_ACTIONS") else "  - ") + e)
     sys.exit(1)
 print("Site check passed: {} groups, {} with named people, {} AWBI recognised.".format(
     len(orgs), sum(1 for o in orgs if o["pp"]), sum(1 for o in orgs if o["ac"])))
