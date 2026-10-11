@@ -1,0 +1,15 @@
+{
+ "status": "ok",
+ "result": {
+  "name": "Asare Animal Trust",
+  "formatted_phone_number": "079751 24932",
+  "website": "www.facebook.com/asareanimaltrust",
+  "formatted_address": "1/194 Kulai Hosabettu Post, Kadambody Road, Surathkal, Karnataka 575019, India",
+  "geometry": {
+   "location": {
+    "lat": 12.987,
+    "lng": 74.79
+   }
+  }
+ }
+}

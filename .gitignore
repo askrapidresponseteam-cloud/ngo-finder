@@ -1,0 +1,15 @@
+# Local environments and caches
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+
+# Scraper run output (spreadsheets, leads, logs); only the website data is committed
+output/
+*.xlsx
+awbi-parsed-rows.csv
+
+# Never commit keys
+*_key
+.env
+.vercel/

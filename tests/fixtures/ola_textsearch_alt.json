@@ -1,0 +1,16 @@
+{
+ "status": "OK",
+ "results": [
+  {
+   "reference": "ola-platform:gau9",
+   "description": "Sri Krishna Gaushala, Sedam Road, Kalaburagi, Karnataka, India",
+   "structured_formatting": {
+    "main_text": "Sri Krishna Gaushala",
+    "secondary_text": "Sedam Road, Kalaburagi, Karnataka, India"
+   },
+   "types": [
+    "point_of_interest"
+   ]
+  }
+ ]
+}

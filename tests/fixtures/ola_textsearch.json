@@ -1,0 +1,67 @@
+{
+ "status": "ok",
+ "info_messages": [],
+ "error_message": "",
+ "predictions": [
+  {
+   "place_id": "ola-platform:asare1",
+   "name": "Asare Animal Trust",
+   "formatted_address": "Kadambody Road, Surathkal, Mangaluru, Dakshina Kannada, Karnataka, 575019, India",
+   "geometry": {
+    "location": {
+     "lat": 12.987,
+     "lng": 74.79
+    }
+   },
+   "types": [
+    "establishment"
+   ]
+  },
+  {
+   "place_id": "ola-platform:hassan1",
+   "name": "Hassan Stray Dog Shelter Trust",
+   "formatted_address": "BM Road, Hassan, Karnataka, 573201, India",
+   "geometry": {
+    "location": {
+     "lat": 13.0,
+     "lng": 76.1
+    }
+   },
+   "types": [
+    "establishment"
+   ]
+  },
+  {
+   "place_id": "ola-platform:vet1",
+   "name": "Happy Tails Pet Clinic",
+   "formatted_address": "Hassan, Karnataka, India",
+   "types": [
+    "veterinary_care"
+   ]
+  },
+  {
+   "place_id": "ola-platform:shop1",
+   "name": "Pet Zone Pet Shop",
+   "formatted_address": "Hassan, Karnataka, India",
+   "types": [
+    "pet_store"
+   ]
+  },
+  {
+   "place_id": "ola-platform:kerala1",
+   "name": "Kasaragod Animal Rescue Trust",
+   "formatted_address": "Kasaragod, Kerala, India"
+  },
+  {
+   "place_id": "ola-platform:cupa1",
+   "name": "CUPA - Compassion Unlimited Plus Action",
+   "formatted_address": "Hebbal, Bengaluru, Karnataka, 560024, India",
+   "geometry": {
+    "location": {
+     "lat": 13.03,
+     "lng": 77.59
+    }
+   }
+  }
+ ]
+}

@@ -1,0 +1,71 @@
+{
+ "elements": [
+  {
+   "type": "node",
+   "id": 101,
+   "lat": 13.3409,
+   "lon": 74.7421,
+   "tags": {
+    "amenity": "animal_shelter",
+    "name": "Udupi Stray Care Shelter",
+    "addr:city": "Manipal",
+    "phone": "+91 98450 11111",
+    "website": "https://udupistraycare.example.org"
+   }
+  },
+  {
+   "type": "way",
+   "id": 202,
+   "center": {
+    "lat": 12.3,
+    "lon": 76.64
+   },
+   "tags": {
+    "office": "ngo",
+    "name": "Mysuru Wildlife Trust",
+    "addr:city": "Mysore"
+   }
+  },
+  {
+   "type": "node",
+   "id": 303,
+   "lat": 12.97,
+   "lon": 77.59,
+   "tags": {
+    "amenity": "animal_shelter",
+    "name": "BBMP ABC Centre Kengeri"
+   }
+  },
+  {
+   "type": "node",
+   "id": 404,
+   "lat": 12.97,
+   "lon": 77.59,
+   "tags": {
+    "office": "ngo",
+    "name": "Rural Education Trust"
+   }
+  },
+  {
+   "type": "node",
+   "id": 505,
+   "lat": 12.97,
+   "lon": 77.59,
+   "tags": {
+    "amenity": "animal_shelter"
+   }
+  },
+  {
+   "type": "node",
+   "id": 606,
+   "lat": 12.9352,
+   "lon": 77.6245,
+   "tags": {
+    "amenity": "animal_shelter",
+    "name": "Charlies Animal Rescue Centre",
+    "addr:city": "Bengaluru",
+    "contact:instagram": "https://instagram.com/charlies.care"
+   }
+  }
+ ]
+}

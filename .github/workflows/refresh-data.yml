@@ -1,0 +1,89 @@
+name: Refresh data
+
+# Runs the scraper (Ola Maps sweep + official lists + web search), checks the
+# result, and commits the new website data. Vercel redeploys on that commit.
+# Needs the repository secret OLA_MAPS_API_KEY.
+
+on:
+  workflow_dispatch:
+    inputs:
+      districts:
+        description: "Only these districts, comma separated (leave blank for all of Karnataka)"
+        required: false
+        default: ""
+  schedule:
+    - cron: "17 21 1 * *"   # 1st of every month, 02:47 IST
+
+permissions:
+  contents: write
+
+concurrency:
+  group: refresh-data
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    env:
+      OLA_MAPS_API_KEY: ${{ secrets.OLA_MAPS_API_KEY }}
+      DISTRICTS: ${{ inputs.districts }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Keep the monthly request counter and search cache between runs
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ka-ngo-scraper
+          key: ka-ngo-cache-${{ github.run_id }}
+          restore-keys: ka-ngo-cache-
+
+      - name: Regression tests
+        run: python -m unittest discover -s tests -q
+
+      - name: Stop if the Ola Maps key is missing
+        if: env.OLA_MAPS_API_KEY == ''
+        run: |
+          echo "::error::Add the repository secret OLA_MAPS_API_KEY (Settings > Secrets and variables > Actions)."
+          exit 1
+
+      - name: Check the Ola Maps key with one search
+        run: python -m scraper --ola-check
+
+      - name: Run the scraper
+        run: |
+          if [ -n "$DISTRICTS" ]; then
+            python -m scraper --out output --site-dir karnataka-animal-ngos --no-places --districts "$DISTRICTS"
+          else
+            python -m scraper --out output --site-dir karnataka-animal-ngos --no-places
+          fi
+
+      - name: Check the website data before publishing
+        run: python check_site.py
+
+      - name: Save the spreadsheet and run log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scrape-output-${{ github.run_number }}
+          path: output/
+          if-no-files-found: ignore
+
+      - name: Commit the new data
+        run: |
+          git config user.name "ngo-finder-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add karnataka-animal-ngos
+          if git diff --cached --quiet; then
+            echo "No changes to the website data."
+          else
+            git commit -m "Refresh NGO data ($(date -u +%Y-%m-%d))"
+            git push
+          fi

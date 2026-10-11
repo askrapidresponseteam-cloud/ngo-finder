@@ -1,0 +1,10 @@
+{"places":[
+ {"id":"ChIJasare","displayName":{"text":"Asare Animal Trust","languageCode":"en"},"formattedAddress":"1/194 Kulai Hosabettu Post, Surathkal, Karnataka 575019, India","location":{"latitude":12.98,"longitude":74.79},"types":["point_of_interest","establishment"],"businessStatus":"OPERATIONAL","googleMapsUri":"https://maps.google.com/?cid=1"},
+ {"id":"ChIJahimsa","displayName":{"text":"Ahimsa Animal Care Trust"},"formattedAddress":"636M+HJ2, Mudar, Karnataka 574122, India","location":{"latitude":13.2,"longitude":75.1},"types":["establishment"],"businessStatus":"OPERATIONAL"},
+ {"id":"ChIJvet","displayName":{"text":"Coastal Pet Clinic"},"formattedAddress":"Surathkal, Karnataka 575014, India","types":["veterinary_care"],"businessStatus":"OPERATIONAL"},
+ {"id":"ChIJshop","displayName":{"text":"Paws Pet Shop"},"formattedAddress":"Mangaluru, Karnataka, India","types":["pet_store"],"businessStatus":"OPERATIONAL"},
+ {"id":"ChIJgoa","displayName":{"text":"Goa Animal Rescue Trust"},"formattedAddress":"Margao, Goa 403601, India","types":["establishment"],"businessStatus":"OPERATIONAL"},
+ {"id":"ChIJclosed","displayName":{"text":"Old Dog Shelter"},"formattedAddress":"Udupi, Karnataka, India","types":["establishment"],"businessStatus":"CLOSED_PERMANENTLY"},
+ {"id":"ChIJcupa","displayName":{"text":"CUPA - Compassion Unlimited Plus Action"},"formattedAddress":"Hebbal, Bengaluru, Karnataka 560024, India","types":["establishment"],"businessStatus":"OPERATIONAL"},
+ {"id":"ChIJgau","displayName":{"text":"Sri Krishna Gaushala"},"formattedAddress":"Kalaburagi, Karnataka 585101, India","types":["establishment"],"businessStatus":"OPERATIONAL"}
+]}
