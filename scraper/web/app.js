@@ -203,7 +203,7 @@
       fill.style.width = (x.n ? Math.max(100 * x.n / max, 3) : 0) + "%";
       var b = el("button", { cls: "rank" + (x.n ? "" : " zero"), type: "button" }, [
         el("span", { cls: "r", text: (i < 9 ? "0" : "") + (i + 1) }),
-        el("span", { cls: "nm", text: x.name, title: x.name }),
+        el("span", { cls: "nm", text: x.name, title: x.title || x.name }),
         el("div", { cls: "track" }, [fill]),
         el("span", { cls: "ct", text: fmt(x.n), title: plural(x.n, "group") }),
         el("span", { cls: "pc", text: pct(x.n, total) + "%" })
@@ -287,7 +287,7 @@
       if (p[1] === "Unknown" && (!state || p[0] === state)) names.push(p);
     });
     return names.filter(function (x) { return withZero || counts[x[0] + "|" + x[1]]; }).map(function (x) {
-      return { name: dName(x[1]) + (state ? "" : ", " + sName(x[0])), n: counts[x[0] + "|" + x[1]] || 0,
+      return { name: dName(x[1]), title: dName(x[1]) + ", " + sName(x[0]), n: counts[x[0] + "|" + x[1]] || 0,
         go: function () { go({ state: x[0], district: x[1] }); } };
     }).sort(function (a, b) { return b.n - a.n || a.name.localeCompare(b.name); });
   }
@@ -328,7 +328,7 @@
     var map = card("mapcard", [
       el("div", { cls: "label", text: "Groups on the map" }),
       el("div", { cls: "number", text: fmt(list.length) }),
-      el("div", { cls: "caption", text: "in " + plural(places.filter(function (p) { return p.name.indexOf("District not known") < 0; }).length, "district") }),
+      el("div", { cls: "caption", text: "in " + plural(places.filter(function (p) { return p.name !== "District not known"; }).length, "district") }),
       corner("All states", function () { go({ v: "states" }); }),
       drawMap([6, 67.6, 37.6, 97.6], districtSpots(list).filter(function (s) { return s.n; })),
       el("div", { cls: "maptip", text: "Tap a blue dot to open that district" })
