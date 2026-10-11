@@ -352,7 +352,7 @@ def check(http, key, log=print):
             continue
         items = parse_items(body)
         kept = [it for it in items if ola_candidate(it)]
-        if path == "/autocomplete" and params.get("strictbounds"):
+        if path == "/autocomplete":
             found += len(kept)
             if kept and not first_id:
                 first_id = kept[0]["id"]
