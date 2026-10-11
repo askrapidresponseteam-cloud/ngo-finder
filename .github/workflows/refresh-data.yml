@@ -24,7 +24,7 @@ concurrency:
 jobs:
   refresh:
     runs-on: ubuntu-latest
-    timeout-minutes: 240
+    timeout-minutes: 350   # GitHub allows at most 360 for one job
     env:
       OLA_MAPS_API_KEY: ${{ secrets.OLA_MAPS_API_KEY }}
       STATES: ${{ inputs.states }}
@@ -60,9 +60,9 @@ jobs:
       - name: Run the scraper
         run: |
           if [ -n "$STATES" ]; then
-            python -m scraper --out output --site-dir site --no-places --states "$STATES"
+            python -m scraper --out output --site-dir site --no-places --lookup-max 300 --people-max 200 --states "$STATES"
           else
-            python -m scraper --out output --site-dir site --no-places
+            python -m scraper --out output --site-dir site --no-places --lookup-max 300 --people-max 200
           fi
 
       - name: Check the website data before publishing
