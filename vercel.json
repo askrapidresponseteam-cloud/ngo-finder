@@ -2,7 +2,7 @@
   "framework": null,
   "buildCommand": "",
   "installCommand": "",
-  "outputDirectory": "karnataka-animal-ngos",
+  "outputDirectory": "site",
   "cleanUrls": true,
   "headers": [
     {

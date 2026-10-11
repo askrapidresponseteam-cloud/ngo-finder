@@ -19,9 +19,10 @@ import os
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 
-from .. import districts
+from .. import districts, geo
 from ..enrich import norm_phone
 from ..models import Org
+from ..text import token_overlap
 from .google_places import Budget, Usage, candidate, query_plan
 
 BASE = "https://api.olamaps.io/places/v1"
@@ -33,12 +34,31 @@ DISTRICT_QUERIES = ["animal shelter", "animal rescue", "animal welfare trust", "
                     "snake rescue", "animal hospital trust"]
 TOWN_QUERIES = ["animal shelter", "animal rescue", "dog shelter", "gaushala", "animal welfare trust"]
 LOCALITY_QUERIES = ["animal shelter", "animal rescue", "dog rescue", "cat rescue"]
+# Every other district in India.
+NATIONAL_QUERIES = ["animal shelter", "animal rescue", "animal welfare trust", "gaushala",
+                    "dog shelter", "wildlife rescue"]
 
 ATTRIBUTION = "Ola Maps (data available under the Open Database License)"
 
 
-def plan(only=None):
-    return query_plan(only, DISTRICT_QUERIES, TOWN_QUERIES, LOCALITY_QUERIES)
+def plan(only=None, states=None):
+    """(query, state, district) for the sweep. Karnataka gets the deeper
+    taluk-level plan; every other district in India gets NATIONAL_QUERIES."""
+    out = []
+    if not states or "Karnataka" in states:
+        ka_only = [d for d in (only or []) if d in districts.DISTRICTS] or None
+        if not only or ka_only:
+            out += [(q, "Karnataka", d) for q, d in query_plan(ka_only, DISTRICT_QUERIES, TOWN_QUERIES,
+                                                                 LOCALITY_QUERIES)]
+    for st in geo.states():
+        if st == "Karnataka" or (states and st not in states):
+            continue
+        for d in geo.districts_of(st):
+            if only and d not in only:
+                continue
+            for q in NATIONAL_QUERIES:
+                out.append(("{} in {} district, {}".format(q, d, st), st, d))
+    return out
 
 
 class OlaError(Exception):
@@ -98,7 +118,7 @@ def parse_details(data):
             if n and n not in phones:
                 phones.append(n)
     loc = (r.get("geometry") or {}).get("location") or {}
-    return {"phones": phones, "website": (r.get("website") or "").strip(),
+    return {"name": (r.get("name") or "").strip(), "phones": phones, "website": (r.get("website") or "").strip(),
             "address": (r.get("formatted_address") or "").strip(),
             "lat": loc.get("lat", ""), "lng": loc.get("lng", "")}
 
@@ -113,34 +133,38 @@ def details(http, key, place_id, usage):
     return parse_details(_get(http, "/details", {"place_id": place_id}, key))
 
 
-def sweep(http, key, cap=90000, only=None, log=print, workers=3, with_details=True):
+def sweep(http, key, cap=90000, only=None, log=print, workers=3, with_details=True, states=None):
     """Search every query in the plan; return Org records for shelters found."""
     usage = Usage(cap, path=USAGE_FILE)
-    queries = plan(only)
+    queries = plan(only, states)
     log("  Ola Maps: {} searches planned, {} of {} monthly requests already used".format(
         len(queries), usage.used, cap))
     found, info = {}, {"queries": 0, "stopped": "", "errors": 0}
 
     def run(item):
-        q, d = item
+        q, st, d = item
         try:
-            return q, d, text_search(http, key, q, usage), None
+            return q, st, d, text_search(http, key, q, usage), None
         except (Budget, PermissionError):
             raise
         except Exception as err:
-            return q, d, [], err
+            return q, st, d, [], err
 
     try:
         with ThreadPoolExecutor(max_workers=workers) as pool:
-            for i, (q, d, items, err) in enumerate(pool.map(run, queries), 1):
+            for i, (q, st, d, items, err) in enumerate(pool.map(run, queries), 1):
                 if err:
                     info["errors"] += 1
                 for it in items:
-                    if not candidate(it["name"], it["address"], it["types"], it["closed"]):
+                    if not candidate(it["name"], it["address"], it["types"], it["closed"], require_state=False):
                         continue
+                    where_st, where_d = geo.locate(it["address"], st)
+                    if where_st and where_st != st:
+                        continue  # a result from another state; that state's own searches cover it
                     key_ = it["id"] or (it["name"].lower(), it["address"].lower())
                     if key_ not in found:
-                        it["district"] = districts.guess_from_text(it["address"]) or d
+                        it["state"] = st
+                        it["district"] = where_d or d
                         it["query"] = q
                         found[key_] = it
                 info["queries"] = i
@@ -166,6 +190,9 @@ def sweep(http, key, cap=90000, only=None, log=print, workers=3, with_details=Tr
         try:
             with ThreadPoolExecutor(max_workers=workers) as pool:
                 for p, dt in pool.map(det, places):
+                    # Ignore details that describe a different place.
+                    if dt and dt.get("name") and token_overlap(dt["name"], p["name"]) < 0.6:
+                        dt = None
                     if dt:
                         p["phones"] = dt["phones"]
                         p["website"] = dt["website"]
@@ -194,6 +221,7 @@ def to_org(p):
         name=p["name"],
         source="Ola Maps",
         confidence="medium",
+        state=p.get("state", "Karnataka"),
         district=p["district"],
         address=p["address"],
         phones=p.get("phones", []),
@@ -219,7 +247,7 @@ def check(http, key, query="animal shelter in Udupi, Karnataka", log=print):
     log("")
     log("Parsed {} places:".format(len(items)))
     for it in items[:10]:
-        keep = candidate(it["name"], it["address"], it["types"], it["closed"])
+        keep = candidate(it["name"], it["address"], it["types"], it["closed"], require_state=False)
         log("  [{}] {} | {} | {},{}".format("keep" if keep else "skip", it["name"], it["address"],
                                            it["lat"], it["lng"]))
     return resp.status_code == 200 and bool(items)

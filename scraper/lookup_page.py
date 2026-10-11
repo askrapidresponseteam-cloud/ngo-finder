@@ -16,6 +16,7 @@ import shutil
 from datetime import date
 from urllib.parse import urlparse
 
+from . import geo
 from .classify import categories
 from .dataset import SNAPSHOT_DATE
 from .export import sort_key
@@ -47,6 +48,7 @@ def record(org):
         "n": org.name,
         "k": org.aka,
         "c": cats,
+        "st": org.state or "Unknown",
         "d": org.district or "Unknown",
         "a": org.city,
         "ad": org.address,
@@ -68,6 +70,21 @@ def record(org):
     }
 
 
+def _num(x):
+    try:
+        return round(float(x), 2)
+    except (TypeError, ValueError):
+        return None
+
+
+def geography():
+    """Every state with its districts as [name, lat, lon] (lat and lon may be null)."""
+    out = {}
+    for s in geo.states():
+        out[s] = [[d] + [_num(v) for v in geo.centre(s, d)] for d in geo.districts_of(s)]
+    return out
+
+
 def payload(orgs, generated=None):
     data = [record(o) for o in sorted(orgs, key=sort_key)]
     meta = {
@@ -75,6 +92,8 @@ def payload(orgs, generated=None):
         "awbi_date": SNAPSHOT_DATE,
         "count": len(data),
         "ola": any("Ola Maps" in o.sources for o in orgs),
+        "states": geography(),
+        "grid": geo.map_grid(),
     }
     return {"meta": meta, "orgs": data}
 

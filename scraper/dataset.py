@@ -18,6 +18,7 @@ from .text import clean
 
 HERE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 SNAPSHOT = os.path.join(HERE, "awbi_karnataka_snapshot.csv")
+NATIONAL_SNAPSHOT = os.path.join(HERE, "awbi_recognised_all.csv")
 RESEARCHED = os.path.join(HERE, "researched.json")
 ADDITIONS = os.path.join(HERE, "my_additions.csv")
 SNAPSHOT_DATE = "31 Mar 2026"
@@ -42,7 +43,11 @@ KNOWN_AKA = {
 }
 
 
-def load_snapshot(path=SNAPSHOT):
+def load_snapshot(path=None):
+    """The AWBI recognised list: the national copy if one has been saved by a
+    scraper run, otherwise the built-in Karnataka rows."""
+    if path is None:
+        path = NATIONAL_SNAPSHOT if os.path.exists(NATIONAL_SNAPSHOT) else SNAPSHOT
     orgs = []
     with open(path, encoding="utf-8") as fh:
         for r in csv.DictReader(fh):
@@ -51,6 +56,7 @@ def load_snapshot(path=SNAPSHOT):
                 name=r["name"],
                 source="AWBI recognised list",
                 confidence="high",
+                state=r.get("state") or "Karnataka",
                 city=r["district"],
                 reg_address=r["address"],
                 awbi_code=r["code"],
@@ -74,6 +80,7 @@ def load_researched(path=RESEARCHED):
             name=r["name"],
             source="Researched",
             confidence="medium",
+            state=r.get("state") or "Karnataka",
             district=r.get("district", ""),
             city=r.get("area", ""),
             address=r.get("address", ""),
@@ -97,7 +104,8 @@ def _split(value):
 
 def load_additions(path=ADDITIONS):
     """Groups you add yourself (one row each). List fields use ';' between
-    items; people are written as Name|Role|Source URL."""
+    items; people are written as Name|Role|Source URL. A blank state means
+    Karnataka."""
     if not path or not os.path.exists(path):
         return []
     orgs = []
@@ -115,6 +123,7 @@ def load_additions(path=ADDITIONS):
                 name=r["name"],
                 source="Added by you",
                 confidence="medium",
+                state=r.get("state") or "Karnataka",
                 district=r.get("district", ""),
                 city=r.get("area", ""),
                 address=r.get("address", ""),

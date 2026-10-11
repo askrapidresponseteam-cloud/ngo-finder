@@ -1,5 +1,5 @@
 """OpenStreetMap (free, no key): animal shelters and animal or wildlife NGOs
-mapped inside Karnataka, via the public Overpass API."""
+mapped anywhere in India, via the public Overpass API."""
 
 from ..classify import is_relevant, looks_governmental
 from ..models import Org
@@ -18,8 +18,8 @@ NAME_RE = (
 )
 
 QUERY = """
-[out:json][timeout:180];
-area["ISO3166-2"="IN-KA"][admin_level=4]->.ka;
+[out:json][timeout:300];
+area["ISO3166-1"="IN"][admin_level=2]->.ka;
 (
   nwr["amenity"="animal_shelter"](area.ka);
   nwr["office"~"^(ngo|association|charity|foundation|non_profit)$"]["name"~"%(re)s",i](area.ka);
@@ -62,6 +62,7 @@ def parse(payload):
             name=name,
             source="OpenStreetMap",
             confidence="medium",
+            state=tags.get("addr:state", ""),
             city=tags.get("addr:district") or tags.get("addr:city") or "",
             address=_addr(tags),
             phones=phones,
@@ -80,7 +81,7 @@ def fetch(http, log=print):
     info = {"endpoint": "", "elements": 0, "errors": []}
     for url in ENDPOINTS:
         try:
-            resp = http.post(url, data={"data": QUERY}, timeout=240)
+            resp = http.post(url, data={"data": QUERY}, timeout=360)
             if resp.status_code != 200:
                 info["errors"].append("{} HTTP {}".format(url, resp.status_code))
                 continue

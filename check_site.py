@@ -10,15 +10,12 @@ import os
 import re
 import sys
 
-SITE = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(os.path.abspath(__file__)), "karnataka-animal-ngos")
-DISTRICTS = {
-    "Bagalkote", "Ballari", "Belagavi", "Bengaluru Rural", "Bengaluru Urban",
-    "Bengaluru South (Ramanagara)", "Bidar", "Chamarajanagar", "Chikkaballapura",
-    "Chikkamagaluru", "Chitradurga", "Dakshina Kannada", "Davanagere", "Dharwad",
-    "Gadag", "Hassan", "Haveri", "Kalaburagi", "Kodagu", "Kolar", "Koppal",
-    "Mandya", "Mysuru", "Raichur", "Shivamogga", "Tumakuru", "Udupi",
-    "Uttara Kannada", "Vijayanagara", "Vijayapura", "Yadgir", "Unknown",
-}
+SITE = sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.dirname(os.path.abspath(__file__)), "site")
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
+from scraper import geo  # noqa: E402  (standard library only underneath)
+
+VALID = {(st, d) for st in geo.states() for d in geo.districts_of(st)}
 LONG_DASH = re.compile("[" + "".join(chr(c) for c in (0x2012, 0x2013, 0x2014, 0x2015)) + "]")
 MUST_HAVE = [
     # (name or alias, person who must be listed or None)
@@ -45,9 +42,11 @@ if not errors:
         errors.append("only {} groups; expected at least 160".format(len(orgs)))
     seen = set()
     for o in orgs:
-        if o["d"] not in DISTRICTS:
-            errors.append("bad district {!r} for {}".format(o["d"], o["n"]))
-        key = (o["n"].lower(), o["d"], o["ac"])
+        if not o.get("st"):
+            errors.append("no state for " + o["n"])
+        elif o["d"] != "Unknown" and (o["st"], o["d"]) not in VALID:
+            errors.append("bad district {!r} in {} for {}".format(o["d"], o["st"], o["n"]))
+        key = (o["n"].lower(), o.get("st"), o["d"], o["ac"])
         if key in seen:
             errors.append("duplicate: {} ({})".format(o["n"], o["d"]))
         seen.add(key)

@@ -3,7 +3,7 @@
 from dataclasses import dataclass, field
 from typing import List
 
-from . import districts
+from . import districts, geo
 from .text import clean, name_key
 
 CONFIDENCE_RANK = {"high": 3, "medium": 2, "low": 1}
@@ -35,6 +35,7 @@ class Org:
     categories: List[str] = field(default_factory=list)
     reg_address: str = ""
     place_id: str = ""
+    state: str = ""
 
     def __post_init__(self):
         self.name = clean(self.name)
@@ -42,9 +43,26 @@ class Org:
         self.reg_address = clean(self.reg_address)
         self.city = clean(self.city)
         self.aka = [clean(a) for a in self.aka if clean(a) and clean(a) != self.name]
-        if self.district not in districts.DISTRICTS:
-            self.district = districts.normalise(self.district) or districts.guess_from_text(
-                self.city, self.address, self.reg_address)
+        self.state = geo.normalize_state(self.state) if self.state else ""
+        known = geo.normalize_district(self.state, self.district) if (self.state and self.district) else ""
+        if self.state == "Karnataka" and self.district in districts.DISTRICTS:
+            known = self.district
+        text = " , ".join(x for x in (self.city, self.address, self.reg_address, self.district) if x)
+        if not known and self.state:
+            known = geo.normalize_district(self.state, self.city)  # a district the source states wins
+        if known:
+            self.district = known
+        else:
+            st, d = geo.locate(text, self.state)
+            if st and self.state and st != self.state and geo.from_pin(text):
+                self.state = st  # PIN codes beat old state labels (e.g. pre-2014 Andhra Pradesh)
+            self.state = self.state or st
+            self.district = d if (not self.state or st == self.state or not st) else ""
+            if not self.district and self.state:
+                self.district = geo.normalize_district(self.state, self.city)
+        if self.state == "Karnataka" and self.district == "Ballari" and \
+                districts.guess_from_text(" ".join([self.address, self.reg_address, self.city])) == "Vijayanagara":
+            self.district = "Vijayanagara"  # carved out of Ballari in 2021
         if self.source and self.source not in self.sources:
             self.sources.append(self.source)
         for p in self.people:
@@ -76,7 +94,7 @@ class Org:
             self.name, self.confidence = other.name, other.confidence
         elif other.name != self.name and other.name not in self.aka:
             self.aka.append(other.name)
-        for attr in ("district", "city", "address", "reg_address", "website", "awbi_code", "place_id",
+        for attr in ("state", "district", "city", "address", "reg_address", "website", "awbi_code", "place_id",
                      "awbi_valid_upto", "lat", "lon", "snippet"):
             if not getattr(self, attr) and getattr(other, attr):
                 setattr(self, attr, getattr(other, attr))
@@ -99,6 +117,8 @@ def _person_key(name):
 
 
 def _districts_compatible(a, b):
+    if a.state and b.state and a.state != b.state:
+        return False
     if not a.district or not b.district or a.district == b.district:
         return True
     return a.district in BENGALURU and b.district in BENGALURU

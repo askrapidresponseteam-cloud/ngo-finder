@@ -1,14 +1,14 @@
 name: Refresh data
 
-# Runs the scraper (Ola Maps sweep + official lists + web search), checks the
+# Runs the scraper across India (Ola Maps sweep + official lists + web search), checks the
 # result, and commits the new website data. Vercel redeploys on that commit.
 # Needs the repository secret OLA_MAPS_API_KEY.
 
 on:
   workflow_dispatch:
     inputs:
-      districts:
-        description: "Only these districts, comma separated (leave blank for all of Karnataka)"
+      states:
+        description: "Only these states, comma separated (leave blank for all of India)"
         required: false
         default: ""
   schedule:
@@ -27,7 +27,7 @@ jobs:
     timeout-minutes: 240
     env:
       OLA_MAPS_API_KEY: ${{ secrets.OLA_MAPS_API_KEY }}
-      DISTRICTS: ${{ inputs.districts }}
+      STATES: ${{ inputs.states }}
     steps:
       - uses: actions/checkout@v4
 
@@ -59,10 +59,10 @@ jobs:
 
       - name: Run the scraper
         run: |
-          if [ -n "$DISTRICTS" ]; then
-            python -m scraper --out output --site-dir karnataka-animal-ngos --no-places --districts "$DISTRICTS"
+          if [ -n "$STATES" ]; then
+            python -m scraper --out output --site-dir site --no-places --states "$STATES"
           else
-            python -m scraper --out output --site-dir karnataka-animal-ngos --no-places
+            python -m scraper --out output --site-dir site --no-places
           fi
 
       - name: Check the website data before publishing
@@ -80,7 +80,8 @@ jobs:
         run: |
           git config user.name "ngo-finder-bot"
           git config user.email "actions@users.noreply.github.com"
-          git add karnataka-animal-ngos
+          git add site
+          if [ -f scraper/data/awbi_recognised_all.csv ]; then git add scraper/data/awbi_recognised_all.csv; fi
           if git diff --cached --quiet; then
             echo "No changes to the website data."
           else

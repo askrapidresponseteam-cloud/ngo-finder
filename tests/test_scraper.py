@@ -120,8 +120,15 @@ class TestAwbi(unittest.TestCase):
     def test_fetch_uses_local_pdf_and_survives_bad_urls(self):
         http = FakeHttp({})  # every URL 404s
         orgs, info, _ = awbi.fetch(http, "recognised",
-                                   [os.path.join(FIX, "awbi_recognised_ruled.pdf")], None, lambda m: None)
+                                   [os.path.join(FIX, "awbi_recognised_ruled.pdf")], None, lambda m: None,
+                                   states=["Karnataka"])
         self.assertEqual(len(orgs), len(EXPECTED_KA))
+        everything, _, _ = awbi.fetch(http, "recognised",
+                                      [os.path.join(FIX, "awbi_recognised_ruled.pdf")], None, lambda m: None)
+        self.assertEqual(len(everything), 15)  # every state
+        by_name = {o.name: o for o in everything}
+        self.assertEqual(by_name["Elephant Welfare Association"].state, "Kerala")
+        self.assertEqual(by_name["Indian Vety. Association"].state, "Delhi")
         orgs, info, _ = awbi.fetch(http, "recognised", [], None, lambda m: None)
         self.assertEqual(orgs, [])
         self.assertTrue(info["tried"])
@@ -129,7 +136,7 @@ class TestAwbi(unittest.TestCase):
     def test_fetch_downloads_newest_pdf(self):
         pdf = fixture("awbi_recognised_ruled.pdf", "rb")
         http = FakeHttp({"177608352345": FakeResponse(content=pdf, ctype="application/pdf")})
-        orgs, info, _ = awbi.fetch(http, "recognised", [], None, lambda m: None)
+        orgs, info, _ = awbi.fetch(http, "recognised", [], None, lambda m: None, states=["Karnataka"])
         self.assertEqual(len(orgs), len(EXPECTED_KA))
         self.assertIn("177608352345", info["used"])
 
@@ -623,7 +630,7 @@ class TestEndToEnd(unittest.TestCase):
         finally:
             cli.Http = original
         self.assertEqual(code, 0)
-        wb = load_workbook(os.path.join(out, "karnataka-animal-ngos.xlsx"))
+        wb = load_workbook(os.path.join(out, "animal-ngos.xlsx"))
         ws = wb["NGOs"]
         head = [c.value for c in ws[1]]
         rows = [dict(zip(head, [c.value for c in r])) for r in ws.iter_rows(min_row=2)]
@@ -649,9 +656,9 @@ class TestEndToEnd(unittest.TestCase):
                 for v in row:
                     if isinstance(v, str):
                         self.assertIsNone(LONG_DASH.search(v), v)
-        self.assertTrue(os.path.exists(os.path.join(out, "karnataka-animal-ngos.csv")))
+        self.assertTrue(os.path.exists(os.path.join(out, "animal-ngos.csv")))
         self.assertIn("Rekha Shenoy (Founder", shelter["Managed by"])
-        with open(os.path.join(out, "karnataka-animal-ngos.html"), encoding="utf-8") as fh:
+        with open(os.path.join(out, "animal-ngos.html"), encoding="utf-8") as fh:
             page = fh.read()
         self.assertIn("Rekha Shenoy", page)
         self.assertIn("Captain's Animal Care Trust", page)
@@ -685,7 +692,7 @@ class TestEndToEndWithGoogle(unittest.TestCase):
             cli.Http, gp.USAGE_FILE = orig_http, orig_usage
         self.assertEqual(code, 0)
         self.assertEqual(sum(1 for u in fake.calls if "places.googleapis.com" in u), 3)
-        wb = load_workbook(os.path.join(out, "karnataka-animal-ngos.xlsx"))
+        wb = load_workbook(os.path.join(out, "animal-ngos.xlsx"))
         leads = [r[0] for r in wb["Leads to confirm"].iter_rows(min_row=2, values_only=True)]
         self.assertIn("Sri Krishna Gaushala", leads)
         with open(os.path.join(out, "site", "data", "ngos.json"), encoding="utf-8") as fh:
@@ -739,6 +746,70 @@ class TestDataset(unittest.TestCase):
         pfa = [r for r in data["orgs"] if r["ac"] == "KA025/2001"][0]
         self.assertIn("PFA Wildlife Hospital", pfa["k"])
         self.assertEqual(data["meta"]["count"], len(self.orgs))
+
+
+class TestGeo(unittest.TestCase):
+    def test_states_and_districts(self):
+        from scraper import geo
+        self.assertEqual(len(geo.states()), 36)
+        self.assertEqual(len(geo.districts_of("Karnataka")), 31)
+        self.assertIn("Vijayanagara", geo.districts_of("Karnataka"))
+        self.assertGreater(sum(len(geo.districts_of(s)) for s in geo.states()), 700)
+
+    def test_normalise_names(self):
+        from scraper import geo
+        self.assertEqual(geo.normalize_state("Orissa"), "Odisha")
+        self.assertEqual(geo.normalize_state("new delhi"), "Delhi")
+        self.assertEqual(geo.normalize_state("Atlantis"), "")
+        self.assertEqual(geo.normalize_district("Haryana", "Gurgaon"), "Gurugram")
+        self.assertEqual(geo.normalize_district("Kerala", "Trivandrum Dist."), "Thiruvananthapuram")
+
+    def test_locate_by_pin_and_name(self):
+        from scraper import geo
+        self.assertEqual(geo.locate("Kadambody Rd, Surathkal, Mangaluru 575019"), ("Karnataka", "Dakshina Kannada"))
+        self.assertEqual(geo.locate("Sector 5, Chandigarh 160005")[0], "Chandigarh")
+        st, d = geo.locate("Near bus stand, Kozhikode, Kerala")
+        self.assertEqual((st, d), ("Kerala", "Kozhikode"))
+        self.assertEqual(geo.locate("Hosapete, Vijayanagara district"), ("Karnataka", "Vijayanagara"))
+
+    def test_org_outside_karnataka_keeps_its_state(self):
+        o = Org(name="Animal Rescue Kerala", source="test", state="Kerala", city="Calicut")
+        self.assertEqual((o.state, o.district), ("Kerala", "Kozhikode"))
+        o = Org(name="Some Trust", source="test", address="12 MG Road, Pune 411001")
+        self.assertEqual((o.state, o.district), ("Maharashtra", "Pune"))
+
+    def test_same_name_in_two_states_is_not_merged(self):
+        a = Org(name="People For Animals", source="test", state="Kerala", district="Ernakulam", sources=["x"])
+        b = Org(name="People For Animals", source="test", state="Odisha", district="Khordha", sources=["y"])
+        self.assertEqual(len(merge([a, b])), 2)
+
+    def test_map_grid_covers_india(self):
+        from scraper import geo
+        g = geo.map_grid()
+        self.assertGreater(len(g), 900)
+        self.assertTrue(all(6 < la < 38 and 67 < lo < 98 for la, lo in g))
+
+
+class TestNationwide(unittest.TestCase):
+    def test_ola_plan_all_india_and_one_state(self):
+        from scraper.sources import ola_places
+        allp = ola_places.plan()
+        self.assertEqual({st for _, st, _ in allp}, set(__import__("scraper.geo", fromlist=["x"]).states()))
+        ka = ola_places.plan(states=["Karnataka"])
+        self.assertTrue(ka and all(st == "Karnataka" for _, st, _ in ka))
+        goa = ola_places.plan(states=["Goa"])
+        self.assertEqual({d for _, _, d in goa}, {"North Goa", "South Goa"})
+
+    def test_site_payload_has_states_and_map(self):
+        orgs = [Org(name="Goa Animal Welfare Trust", source="test", state="Goa", district="North Goa", sources=["AWBI"],
+                    source_urls=["https://example.org"]),
+                Org(name="Udupi SPCA", source="test", district="Udupi", sources=["AWBI"], source_urls=["https://example.org"])]
+        data = lookup_page.payload(orgs)
+        self.assertEqual({r["st"] for r in data["orgs"]}, {"Goa", "Karnataka"})
+        self.assertEqual(len(data["meta"]["states"]), 36)
+        goa = dict((d[0], d[1:]) for d in data["meta"]["states"]["Goa"])
+        self.assertIsNotNone(goa["North Goa"][0])
+        self.assertGreater(len(data["meta"]["grid"]), 900)
 
 
 class TestNoLongDashesInProject(unittest.TestCase):

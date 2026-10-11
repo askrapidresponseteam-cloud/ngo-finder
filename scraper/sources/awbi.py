@@ -11,6 +11,7 @@ keeps whichever finds the most rows.
 """
 
 import io
+import os
 import re
 from datetime import date
 
@@ -464,11 +465,12 @@ def to_orgs(rows, list_kind, source_url):
             name=r["name"],
             source="AWBI recognised list" if list_kind == "recognised" else "AWBI ABC list",
             confidence="high",
+            state=r.get("state", ""),
             city=r["district"],
             address=r["address"] if list_kind == "recognised" else "",
             awbi_code=r["code"],
             awbi_valid_upto=r["valid_upto"] if list_kind == "recognised" else "",
-            source_urls=[source_url] if source_url else [],
+            source_urls=[source_url or "https://awbi.gov.in/"],
             notes=notes,
         ))
     return orgs
@@ -499,8 +501,36 @@ def discover(search, kind):
     return urls
 
 
-def fetch(http, kind, local_paths=(), search=None, log=print):
-    """Return Karnataka Org records for one list kind, plus a log dict."""
+SNAPSHOT_COLUMNS = ["code", "name", "address", "district", "state", "recognised", "renewed", "valid_upto"]
+
+
+def save_snapshot(rows, path):
+    """Keep a parsed national list in the repo so it survives AWBI outages."""
+    import csv
+    good = [r for r in rows if r["name"] and r["state"].lower() in _STATE_SET]
+    if len(good) < 500:
+        return 0
+    tmp = path + ".tmp"
+    with open(tmp, "w", newline="", encoding="utf-8") as fh:
+        w = csv.DictWriter(fh, fieldnames=SNAPSHOT_COLUMNS)
+        w.writeheader()
+        for r in good:
+            w.writerow({k: clean(r.get(k, "")) for k in SNAPSHOT_COLUMNS})
+    os.replace(tmp, path)
+    return len(good)
+
+
+def in_states(rows, states):
+    if not states:
+        return rows
+    from ..geo import normalize_state
+    wanted = set(states)
+    return [r for r in rows if normalize_state(r["state"]) in wanted]
+
+
+def fetch(http, kind, local_paths=(), search=None, log=print, states=None):
+    """Return Org records for one list kind (all states, or only `states`),
+    plus a log dict and every parsed row."""
     known = KNOWN_RECOGNITION_PDFS if kind == "recognised" else KNOWN_ABC_PDFS
     candidates = []
     if search:
@@ -526,12 +556,14 @@ def fetch(http, kind, local_paths=(), search=None, log=print):
                     continue
                 data = resp.content
             rows, method, counts = parse_pdf(data)
-            ka = karnataka_rows(rows)
+            picked = in_states(rows, states)
             info["tried"].append("{} (parsed {} rows via {}, scores {})".format(where, len(rows), method, counts))
-            if len(ka) >= 3:
-                info.update(used=where, method=method, rows=len(rows), karnataka=len(ka))
-                log("  AWBI {}: {} Karnataka rows from {} ({} method)".format(kind, len(ka), where, method))
-                return to_orgs(ka, kind, where if how == "url" else ""), info, rows
+            if len(picked) >= 3:
+                info.update(used=where, method=method, rows=len(rows), karnataka=len(karnataka_rows(rows)),
+                            picked=len(picked))
+                log("  AWBI {}: {} rows ({} in Karnataka) from {} ({} method)".format(
+                    kind, len(picked), info["karnataka"], where, method))
+                return to_orgs(picked, kind, where if how == "url" else ""), info, rows
         except Exception as err:
             info["tried"].append("{} (error: {})".format(where, err))
     log("  AWBI {}: could not get a usable PDF. Tried: {}".format(kind, "; ".join(info["tried"]) or "nothing"))

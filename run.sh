@@ -1,8 +1,9 @@
 #!/bin/bash
-# Karnataka animal welfare and wildlife NGO scraper.
+# Animal welfare and wildlife NGO scraper for India.
 # Usage: bash run.sh               (full run)
 #        bash run.sh --ola-check   (test your Ola Maps key with one search)
-#        bash run.sh --quick    (official lists + map data only, about 1 minute)
+#        bash run.sh --quick       (official lists + map data only, a few minutes)
+#        bash run.sh --states Karnataka,Kerala   (only these states)
 set -e
 cd "$(dirname "$0")"
 OUT="$HOME/Desktop"
@@ -58,7 +59,7 @@ if [[ " $* " == *" --ola-check "* ]]; then
 fi
 
 # Remove the previous run's output so old files do not pile up.
-rm -f "$OUT/karnataka-animal-ngos.xlsx" "$OUT/karnataka-animal-ngos.csv" "$OUT/karnataka-animal-ngos.html" "$OUT/awbi-parsed-rows.csv"
+find "$OUT" -maxdepth 1 \( -name 'animal-ngos.*' -o -name 'karnataka-animal-ngos.*' -o -name 'awbi-parsed-rows.csv' \) -type f -delete 2>/dev/null || true
 
 ./.venv/bin/python -m scraper --out "$OUT" "$@"
-open "$OUT/karnataka-animal-ngos.html" 2>/dev/null || true
+open "$OUT/animal-ngos.html" 2>/dev/null || true

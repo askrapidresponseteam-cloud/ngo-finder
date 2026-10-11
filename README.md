@@ -1,23 +1,26 @@
-# Karnataka animal NGOs: website + scraper
+# Animal NGOs of India: website + scraper
 
 Lookup site of animal welfare, rescue, wildlife and gaushala groups across
-Karnataka, with contacts, who runs each group and sources. The site is the
-`karnataka-animal-ngos` folder; everything else is the scraper that fills it.
+every state and district of India, with contacts, who runs each group and
+sources. The site is the `site` folder; everything else is the scraper that
+fills it.
 
 ## Set up (GitHub + Vercel)
 
 1. **Vercel:** Add New Project, import `askrapidresponseteam-cloud/ngo-finder`,
-   press Deploy. No settings needed; `vercel.json` points Vercel at the site
+   press Deploy. No settings needed; `vercel.json` points Vercel at the `site`
    folder and adds the security headers. Every push redeploys.
 2. **Ola Maps key** as a GitHub secret (never in the code): repo Settings >
    Secrets and variables > Actions > New repository secret, name
    `OLA_MAPS_API_KEY`. Or from your Mac, if you saved the key there and use the
    GitHub CLI:
    `gh secret set OLA_MAPS_API_KEY -R askrapidresponseteam-cloud/ngo-finder < ~/.config/ka-ngo-scraper/ola_maps_key`
-3. **Fill the site:** Actions > Refresh data > Run workflow. It checks the key
-   with one search, sweeps Karnataka, checks the data, and commits it; Vercel
-   then redeploys. It also runs by itself on the 1st of every month. The
-   spreadsheet and run log of each run are attached to the run as a download.
+3. **Fill the site:** Actions > Refresh data > Run workflow (leave "states"
+   blank for all of India). It checks the key with one search, downloads the
+   national AWBI list, sweeps Ola Maps in every district, checks the data and
+   commits it; Vercel then redeploys. It also runs by itself on the 1st of
+   every month. The spreadsheet and run log of each run are attached to the
+   run as a download.
 
 The **Tests** workflow runs the regression tests and the data check on every push.
 
@@ -27,13 +30,8 @@ The **Tests** workflow runs the regression tests and the data check on every pus
 bash deploy.sh
 ```
 
-Checks the data, then publishes the `karnataka-animal-ngos` folder to the
-Vercel project `karnataka-animal-ngos` (created on first run; the Vercel CLI
-asks you to log in once). Needs Node.js for `npx`.
-
-The site ships with a verified base dataset: all 84 Karnataka groups on the
-AWBI recognised list (as on 31 Mar 2026) plus researched groups, each with
-source links and, where published, who runs it. See `scraper/data/`.
+Checks the data, then publishes the `site` folder to the Vercel project
+`ngo-finder` (the Vercel CLI asks you to log in once). Needs Node.js for `npx`.
 
 To refresh with a new scrape and publish:
 
@@ -41,86 +39,88 @@ To refresh with a new scrape and publish:
 bash run.sh && bash deploy.sh
 ```
 
-`run.sh` rebuilds the website folder from the base dataset plus everything
-the scraper finds.
+## The site
+
+- **Overview:** dotted map of India (blue dots are districts with groups; tap
+  one), groups by type, how many have a named person, contact or AWBI
+  recognition, and the top states and districts.
+- **State:** map of that state's districts, ranked district list, then its groups.
+- **District or search:** the groups; tap + for contacts, who runs it, and
+  "More details" for addresses, AWBI code and sources.
+- Type pills (Animal welfare, Wildlife, Gaushala) and the filter button work in
+  every view. Every view has its own link (Copy link).
+
+## Base data shipped in the repo
+
+- All Karnataka groups on the AWBI recognised list (as on 31 Mar 2026),
+  researched groups, and `scraper/data/my_additions.csv`, each with source
+  links and, where published, who runs it.
+- When the scraper downloads the AWBI list it keeps the national copy in
+  `scraper/data/awbi_recognised_all.csv`, so later runs have every state even
+  if awbi.gov.in is down.
+- States and districts come from the India Post PIN code directory
+  (`scraper/data/india_pins.csv`, `india_districts.csv`, built by
+  `tools/build_geo.py`). Karnataka uses its current 31 districts.
 
 ## Ola Maps key (finds the small shelters, free)
 
-Most small shelters and rescue trusts only exist as map listings. The
-scraper sweeps Ola Maps across every district, all 191 taluk towns and 22
-Bengaluru localities (about 1,400 searches, plus one details lookup per
-shelter found: roughly 2,000 to 3,000 requests). Ola's free tier is 100,000
-requests a month with no billing needed, and the scraper stops itself at
-90,000 (`--ola-max`).
+Most small shelters and rescue trusts only exist as map listings. The scraper
+searches Ola Maps in every district of India (about 5,600 searches; Karnataka
+also by taluk town and Bengaluru locality), plus one details lookup per
+shelter found. Ola's free tier is 100,000 requests a month with no billing
+needed, and the scraper stops itself at 90,000 (`--ola-max`).
 
 1. Sign up at https://maps.olakrutrim.com and create an API key.
 2. Copy the key, then run: `mkdir -p ~/.config/ka-ngo-scraper && pbpaste > ~/.config/ka-ngo-scraper/ola_maps_key`
 3. Check it with one search: `bash run.sh --ola-check`
 
-Groups found on Ola Maps are published on the site with the credit Ola's
-terms require ("Ola Maps", data available under the Open Database License).
+Groups found on Ola Maps are published with the credit Ola's terms require
+("Ola Maps", data available under the Open Database License).
 
-## Google Maps key (optional extra)
+## Google Maps key (optional, Karnataka only)
 
-Most small shelters and rescue trusts only exist as Google Maps listings, so
-the scraper sweeps Google Maps (Places API) across every district, taluk town
-and Bengaluru locality. It only uses the free tier:
-
-1. In https://console.cloud.google.com create a project, enable
-   **Places API (New)**, and add a billing account (Google requires one even
-   for free use).
-2. Create an API key and restrict it to Places API (New).
-3. Optional, for a hard guarantee: under Places API (New) > Quotas, set
-   "Text Search requests per day" to 300.
-4. Copy the key, then run: `mkdir -p ~/.config/ka-ngo-scraper && pbpaste > ~/.config/ka-ngo-scraper/google_maps_key`
-
-The scraper itself stops at 4,500 Text Search calls a month (free tier: 5,000;
-change with `--places-max`). A full sweep uses roughly 1,000 to 1,500.
-
-Google's terms do not allow storing or republishing Places data, so:
-- a Maps listing that matches a known group only adds its "Open in Google Maps" link
-- a new listing is published only after the scraper confirms the group on the
-  open web (its own site, Facebook, Instagram or news), using that source
-- everything else goes to the **Leads to confirm** tab of the spreadsheet.
-  Call them, and add the real ones to `scraper/data/my_additions.csv`.
+Google's terms do not allow storing or republishing Places data, so Google is
+only used for leads: a listing that matches a known group adds its "Open in
+Google Maps" link, a new listing is published only after the scraper confirms
+the group on the open web, and everything else goes to the **Leads to
+confirm** tab of the spreadsheet. The scraper stops at 4,500 Text Search calls
+a month (free tier: 5,000; `--places-max`). Key setup: enable **Places API
+(New)** in https://console.cloud.google.com, create a key restricted to it,
+then `pbpaste > ~/.config/ka-ngo-scraper/google_maps_key`.
 
 ## Adding groups yourself
 
-`scraper/data/my_additions.csv` is published as is. One row per group; use
-`;` between multiple phones, emails or links, and write people as
-`Name|Role|Source link`. Then run `bash deploy.sh`.
+`scraper/data/my_additions.csv` is published as is. One row per group; fill
+`state` (blank means Karnataka) and `district`; use `;` between multiple
+phones, emails or links, and write people as `Name|Role|Source link`. Then
+run `bash deploy.sh`.
 
-## Scraper
-
-Finds animal welfare, rescue, wildlife and gaushala organisations across all
-31 districts of Karnataka, and who runs each one. Saves to your Desktop:
-
-- `karnataka-animal-ngos.html`: lookup page. Opens in any browser, works offline.
-  Pick a district or search a group, person or town; tap + for contacts and who runs it.
-- `karnataka-animal-ngos.xlsx` and `.csv`: the same data as a spreadsheet.
-
-## Run
+## Run the scraper
 
 ```
-bash run.sh            # full run, 15 to 25 minutes
-bash run.sh --quick    # official lists + OpenStreetMap only, about 1 minute
+bash run.sh                          # all of India
+bash run.sh --states Karnataka,Goa   # only these states
+bash run.sh --quick                  # official lists + map data only
 ```
 
-Other options (add after `run.sh`):
+Saves to your Desktop: `animal-ngos.html` (the same lookup page in one file,
+works offline) and `animal-ngos.xlsx` / `.csv` (the data as a spreadsheet),
+and updates the `site` folder.
 
 | Option | What it does |
 |---|---|
-| `--districts Udupi,Mysuru` | web search only these districts |
-| `--no-web` | skip district web searches |
+| `--states A,B` | only these states (default: all of India) |
+| `--districts Udupi,Mysuru` | Karnataka web search only in these districts |
+| `--no-web` | skip the Karnataka district web searches |
 | `--no-enrich` | do not visit websites for email, phone and names |
+| `--lookup-max N` | most groups to look up a website for (default 800) |
+| `--people-max N` | most groups to search for who runs it (default 600) |
 | `--no-people` | skip the extra web search for who runs each group |
-| `--ola-key KEY` | Ola Maps key for this run (otherwise read from the saved file) |
+| `--ola-key KEY` | Ola Maps key for this run (otherwise the saved file) |
 | `--ola-max N` | monthly cap on Ola Maps requests (default 90,000) |
 | `--no-ola` | skip the Ola Maps sweep |
 | `--ola-check` | one test search with your Ola key, printed in full |
-| `--google-key KEY` | Google Maps key for this run (otherwise read from the saved file) |
-| `--places-max N` | monthly cap on Google Text Search calls (default 4,500) |
-| `--no-places` | skip the Google Maps sweep |
+| `--google-key KEY` / `--no-places` / `--places-max N` | Google Maps lead search |
 | `--awbi-pdf FILE` | use a downloaded AWBI recognised-list PDF |
 | `--abc-pdf FILE` | use a downloaded AWBI ABC-list PDF |
 | `--dump-awbi` | also save every parsed AWBI row, to check the parser |
@@ -128,35 +128,20 @@ Other options (add after `run.sh`):
 
 ## Where the data comes from
 
-1. **AWBI recognised list** (Animal Welfare Board of India). Official, high confidence.
+1. **AWBI recognised list** (Animal Welfare Board of India), all states. Official, high confidence.
 2. **AWBI ABC list**: groups running animal birth control projects. Municipal bodies are left out.
-3. **OpenStreetMap**: mapped animal shelters and animal or wildlife NGOs. Medium confidence.
-4. **Web search** (DuckDuckGo, Bing as backup), two searches per district. Low confidence, marked "Needs review".
+3. **Ola Maps** listings in every district. Medium confidence.
+4. **OpenStreetMap**: mapped animal shelters and animal or wildlife NGOs in India. Medium confidence.
+5. **Web search**, Karnataka districts. Low confidence, marked "Not verified".
 
-After merging duplicates it looks up websites for AWBI groups and reads each
-website's home, contact, about and team pages for emails, phones, social links
-and the people who run it.
-
-## Who runs it
-
-Names come from the group's own website (team, about, trustee pages) and, when
-the site names nobody, from search snippets that are clearly about that group.
-Only name and role are kept, with the link where each was found, so every
-name can be checked. Names are matched by pattern, so treat them as leads
-and confirm when you get in touch.
-
-## The spreadsheet
-
-- **NGOs**: one row per organisation, filter by District, Category or Confidence.
-- **By district**: counts.
-- **Run log**: which sources worked and anything that failed.
-
-Gaushalas are included and tagged "Gaushala / cattle shelter" so you can filter them out.
+After merging duplicates it looks up websites and reads each website's home,
+contact, about and team pages for emails, phones, social links and the
+people who run it. Names are kept with the link where each was found, so
+treat them as leads and confirm when you get in touch.
 
 ## If something looks wrong
 
-- AWBI renames its PDF on every update. The scraper searches for the newest one,
-  but if it fails, download the list from awbi.gov.in and pass it with `--awbi-pdf`.
-- Search engines sometimes show a captcha after many queries. The scraper then
-  switches engine, and stops searching if both block. Run again later with
-  `--districts` for the ones that were missed.
+- AWBI renames its PDF on every update. If the download fails, get the list
+  from awbi.gov.in and pass it with `--awbi-pdf`.
+- Search engines sometimes show a captcha after many queries. The scraper
+  switches engine and waits, and stops searching if all of them block.

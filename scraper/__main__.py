@@ -6,7 +6,7 @@ import sys
 import time
 from datetime import datetime
 
-from . import __version__, dataset, districts
+from . import __version__, dataset, districts, geo
 from .enrich import enrich
 from .export import write
 from .lookup_page import build_site, write_html
@@ -17,7 +17,8 @@ from .text import clean
 
 
 PROJECT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SITE_DIR = os.path.join(PROJECT, "karnataka-animal-ngos")
+SITE_DIR = os.path.join(PROJECT, "site")
+OUT_NAME = "animal-ngos"
 
 
 def build_args(argv=None):
@@ -27,7 +28,14 @@ def build_args(argv=None):
     p.add_argument("--out", default=os.path.expanduser("~/Desktop"),
                    help="folder for the Excel and CSV output (default: Desktop)")
     p.add_argument("--site-dir", default=SITE_DIR,
-                   help="website folder to rebuild (default: the karnataka-animal-ngos folder)")
+                   help="website folder to rebuild (default: the site folder)")
+    p.add_argument("--states", default="",
+                   help="comma separated states to cover, e.g. Karnataka,Kerala (default: all of India)")
+    p.add_argument("--lookup-max", type=int, default=800,
+                   help="most groups to look up a website for in one run (results are cached)")
+    p.add_argument("--people-max", type=int, default=600,
+                   help="most groups to search for who runs them in one run")
+    p.add_argument("--workers", type=int, default=12, help="websites read at the same time")
     p.add_argument("--quick", action="store_true",
                    help="skip web search and website visits (AWBI + OpenStreetMap only, ~1 min)")
     p.add_argument("--no-web", action="store_true", help="skip the district web searches")
@@ -79,8 +87,19 @@ def main(argv=None):
         args.no_web = args.no_enrich = args.no_find_websites = args.no_people = True
         args.no_places = True
         args.no_ola = True
-    only = [districts.normalise(d) for d in args.districts.split(",") if d.strip()]
-    only = [d for d in only if d]
+    states = [geo.normalize_state(x) for x in args.states.split(",") if x.strip()]
+    bad = [x for x in args.states.split(",") if x.strip() and not geo.normalize_state(x)]
+    if bad:
+        print("Unknown state(s): " + ", ".join(bad))
+        return 1
+    states = states or None
+    only = []
+    for d in [x.strip() for x in args.districts.split(",") if x.strip()]:
+        hit = districts.normalise(d) or next((geo.normalize_district(st, d) for st in (states or geo.states())
+                                                if geo.normalize_district(st, d)), "")
+        if hit:
+            only.append(hit)
+    do_karnataka = not states or "Karnataka" in states
 
     started = time.time()
     log_rows = [("Run at", datetime.now().strftime("%Y-%m-%d %H:%M")), ("Version", __version__)]
@@ -99,27 +118,33 @@ def main(argv=None):
     records = []
 
     say("1/5 AWBI recognised organisations")
-    orgs, info, all_rows = awbi.fetch(http, "recognised", args.awbi_pdf, search_fn, say)
+    orgs, info, all_rows = awbi.fetch(http, "recognised", args.awbi_pdf, search_fn, say, states=states)
     records += orgs
-    log_rows.append(("AWBI recognised list", "{} Karnataka rows; used {}; method {}".format(
+    log_rows.append(("AWBI recognised list", "{} rows; used {}; method {}".format(
         len(orgs), info["used"] or "none", info["method"] or "-")))
+    if info.get("used", "").startswith("http") and all_rows:
+        kept = awbi.save_snapshot(all_rows, dataset.NATIONAL_SNAPSHOT)
+        if kept:
+            say("  saved the national AWBI list ({} groups) into the project".format(kept))
     log_rows.append(("AWBI recognised attempts", " | ".join(info["tried"])))
     if args.dump_awbi and all_rows:
         _dump(all_rows, os.path.join(args.out, "awbi-parsed-rows.csv"))
 
     say("2/5 AWBI ABC project list")
-    orgs, info, _ = awbi.fetch(http, "abc", args.abc_pdf, search_fn, say)
+    orgs, info, _ = awbi.fetch(http, "abc", args.abc_pdf, search_fn, say, states=states)
     records += orgs
-    log_rows.append(("AWBI ABC list", "{} Karnataka NGO rows; used {}".format(len(orgs), info["used"] or "none")))
+    log_rows.append(("AWBI ABC list", "{} NGO rows; used {}".format(len(orgs), info["used"] or "none")))
 
     say("3/5 OpenStreetMap")
     orgs, info = osm.fetch(http, say)
+    if states:
+        orgs = [o for o in orgs if o.state in states]
     records += orgs
     log_rows.append(("OpenStreetMap", "{} kept from {} places; {}".format(
         len(orgs), info["elements"], "; ".join(info["errors"]) or "ok")))
 
-    if not args.no_web:
-        say("4/5 Web search by district (this is the slow part)")
+    if not args.no_web and do_karnataka:
+        say("4/5 Web search by district in Karnataka (this is the slow part)")
         orgs = websearch.district_sweep(searcher, only, say)
         records += orgs
         log_rows.append(("Web search", "{} candidates from {} queries".format(len(orgs), searcher.count)))
@@ -127,14 +152,17 @@ def main(argv=None):
         say("4/5 Web search skipped")
 
     base = dataset.base()
+    if states:
+        base = [o for o in base if o.state in states]
     say("  verified base dataset: {} groups".format(len(base)))
     merged = merge(base + records)
 
     ola_key = "" if args.no_ola else ola_places.load_key(args.ola_key)
     if ola_key:
-        say("Ola Maps sweep (every district, taluk town and Bengaluru locality)")
+        say("Ola Maps sweep ({})".format(", ".join(states) if states else "every district in India"))
         try:
-            ola_orgs, oinfo = ola_places.sweep(http, ola_key, cap=args.ola_max, only=only, log=say)
+            ola_orgs, oinfo = ola_places.sweep(http, ola_key, cap=args.ola_max, only=only or None, log=say,
+                                               states=states)
             before = len(merged)
             merged = merge(merged + ola_orgs)
             log_rows.append(("Ola Maps", "{} shelters and groups from {} searches; {} new after merging; "
@@ -149,11 +177,12 @@ def main(argv=None):
         log_rows.append(("Ola Maps", "skipped: no API key. This is the source that finds most small shelters."))
 
     pending = []
-    key = "" if args.no_places else google_places.load_key(args.google_key)
+    key = "" if (args.no_places or not do_karnataka) else google_places.load_key(args.google_key)
     if key:
         say("Google Maps sweep (every district, taluk town and Bengaluru locality)")
         try:
-            leads, ginfo = google_places.sweep(http, key, cap=args.places_max, only=only, log=say)
+            leads, ginfo = google_places.sweep(http, key, cap=args.places_max,
+                                               only=[d for d in only if d in districts.DISTRICTS] or None, log=say)
             confirmed, pending = google_places.confirm(leads, merged, searcher, log=say)
             log_rows.append(("Google Maps", "{} leads from {} queries; {} new groups confirmed on the web; "
                              "{} leads to confirm by phone; {} calls used this month {}".format(
@@ -168,7 +197,12 @@ def main(argv=None):
     say("  merged {} raw records into {} organisations".format(len(records), len(merged)))
 
     if not args.no_find_websites:
-        missing = [o for o in merged if not o.website and o.confidence == "high"]
+        missing = [o for o in merged if not o.website and not o.social and o.confidence == "high"]
+        if len(missing) > args.lookup_max:
+            say("  {} AWBI groups have no website; looking up {} this run (the rest next run)".format(
+                len(missing), args.lookup_max))
+            # Groups never looked up before go first; cached lookups cost nothing.
+            missing = missing[:args.lookup_max]
         say("  looking up websites for {} AWBI groups".format(len(missing)))
         found = 0
         for i, o in enumerate(missing, 1):
@@ -185,16 +219,20 @@ def main(argv=None):
 
     if not args.no_enrich:
         targets = [o for o in merged if o.website]
-        say("5/5 Reading {} websites for email and phone".format(len(targets)))
-        for i, o in enumerate(targets, 1):
-            enrich(http, o, say)
-            if i % 15 == 0:
-                say("  {}/{} websites read".format(i, len(targets)))
+        say("5/5 Reading {} websites for email, phone and who runs them".format(len(targets)))
+        from concurrent.futures import ThreadPoolExecutor
+        done = 0
+        with ThreadPoolExecutor(max_workers=max(1, args.workers)) as pool:
+            for _ in pool.map(lambda o: enrich(http, o, say), targets):
+                done += 1
+                if done % 50 == 0:
+                    say("  {}/{} websites read".format(done, len(targets)))
     else:
         say("5/5 Website visits skipped")
 
     if not args.no_people:
         targets = [o for o in merged if not o.people and o.confidence in ("high", "medium")]
+        targets = sorted(targets, key=lambda o: (o.confidence != "high", not o.website))[:args.people_max]
         say("  searching for who runs {} groups not named on their websites".format(len(targets)))
         added = 0
         for i, o in enumerate(targets, 1):
@@ -214,9 +252,9 @@ def main(argv=None):
         log_rows.append(("Search issues", " | ".join(searcher.errors[:20])))
 
     os.makedirs(args.out, exist_ok=True)
-    xlsx = os.path.join(args.out, "karnataka-animal-ngos.xlsx")
-    csv_path = os.path.join(args.out, "karnataka-animal-ngos.csv")
-    html_path = os.path.join(args.out, "karnataka-animal-ngos.html")
+    xlsx = os.path.join(args.out, OUT_NAME + ".xlsx")
+    csv_path = os.path.join(args.out, OUT_NAME + ".csv")
+    html_path = os.path.join(args.out, OUT_NAME + ".html")
     log_rows.append(("Total organisations", str(len(merged))))
     log_rows.append(("Run time (min)", "{:.1f}".format((time.time() - started) / 60)))
     n = write(merged, xlsx, csv_path, log_rows, leads=pending)

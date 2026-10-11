@@ -1,3 +1,3 @@
-"""Karnataka animal welfare and wildlife NGO scraper."""
+"""Animal welfare and wildlife NGO scraper for India."""
 
-__version__ = "1.4.0"
+__version__ = "2.0.0"

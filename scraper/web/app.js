@@ -1,13 +1,15 @@
-/* Karnataka animal NGOs lookup. Data is inserted with textContent only. */
+/* Animal NGOs of India. Scraped data is only ever inserted with textContent. */
 (function () {
   "use strict";
 
-  var CATS = [["all", "All"], ["animal", "Animal welfare"], ["wildlife", "Wildlife"], ["cattle", "Gaushala"]];
-  var CAT_LABEL = { animal: "Animal welfare", wildlife: "Wildlife", cattle: "Gaushala" };
-  var PAGE = 40;
+  var TYPES = [["all", "All", "i-grid"], ["animal", "Animal welfare", "i-paw"], ["wildlife", "Wildlife", "i-leaf"], ["cattle", "Gaushala", "i-cow"]];
+  var TYPE_LABEL = { animal: "Animal welfare", wildlife: "Wildlife", cattle: "Gaushala" };
+  var PAGE = 40, TOP = 6, SCALE = 20, STEP = 0.5;
   var SMALL = /^(of|for|and|the|to|a|an|in|on|at)$/i;
-  var st = { q: "", cat: "all", district: null, shown: PAGE, contact: false, people: false, awbi: false, verified: false };
-  var ORGS = [], DISTRICTS = {}, META = {};
+  var NS = "http://www.w3.org/2000/svg";
+  var st = { v: "", q: "", cat: "all", state: null, district: null, shown: PAGE, contact: false, people: false, awbi: false, verified: false };
+  var ORGS = [], META = {}, GEO = {}, GRID = [];
+  var view;
 
   // ---------------------------------------------------------------- helpers
   function $(id) { return document.getElementById(id); }
@@ -19,26 +21,31 @@
       else if (k === "cls") e.className = attrs[k];
       else e.setAttribute(k, attrs[k]);
     }
-    (kids || []).forEach(function (c) { if (c) e.appendChild(typeof c === "string" ? document.createTextNode(c) : c); });
+    add(e, kids);
     return e;
   }
-  function svg(paths, size) {
-    var ns = "http://www.w3.org/2000/svg";
-    var s = document.createElementNS(ns, "svg");
-    s.setAttribute("width", size || 14); s.setAttribute("height", size || 14); s.setAttribute("viewBox", "0 0 24 24");
-    s.setAttribute("fill", "none"); s.setAttribute("stroke", "currentColor"); s.setAttribute("stroke-width", "2.4");
-    s.setAttribute("aria-hidden", "true");
-    paths.forEach(function (p) {
-      var path = document.createElementNS(ns, "path");
-      path.setAttribute("d", p[0]); if (p[1]) path.setAttribute("class", p[1]);
-      s.appendChild(path);
-    });
+  function add(parent, kids) {
+    (kids || []).forEach(function (c) { if (c) parent.appendChild(typeof c === "string" ? document.createTextNode(c) : c); });
+    return parent;
+  }
+  function sv(tag, attrs) {
+    var e = document.createElementNS(NS, tag);
+    for (var k in attrs) if (Object.prototype.hasOwnProperty.call(attrs, k)) e.setAttribute(k, attrs[k]);
+    return e;
+  }
+  function icon(id) {
+    var s = sv("svg", { "class": "icon", "aria-hidden": "true" });
+    s.appendChild(sv("use", { href: "#" + id }));
     return s;
   }
+  function on(node, fn) { node.addEventListener("click", fn); return node; }
   function safe(u) { return /^(https?:|tel:|mailto:)/i.test(u || "") ? u : ""; }
   function host(u) { try { return new URL(u).hostname.replace(/^www\./, ""); } catch (e) { return u; } }
-  function plural(n, w) { return n + " " + w + (n === 1 ? "" : "s"); }
-  function districtLabel(d) { return d === "Unknown" ? "District not known" : d; }
+  function fmt(n) { return Number(n).toLocaleString("en-IN"); }
+  function plural(n, w, many) { return fmt(n) + " " + (n === 1 ? w : (many || w + "s")); }
+  function pct(a, b) { return b ? Math.round(100 * a / b) : 0; }
+  function dName(d) { return d === "Unknown" ? "District not known" : d; }
+  function sName(s) { return s === "Unknown" ? "State not known" : s; }
   function initials(s) {
     var words = (s || "").replace(/\([^)]*\)/g, " ").split(/[^A-Za-z]+/).filter(Boolean);
     var all = words.map(function (w) { return w[0]; }).join("");
@@ -55,24 +62,46 @@
   var toastTimer;
   function toast(msg) {
     var t = $("toast"); t.textContent = msg; t.classList.add("on");
-    clearTimeout(toastTimer); toastTimer = setTimeout(function () { t.classList.remove("on"); }, 1800);
+    clearTimeout(toastTimer); toastTimer = setTimeout(function () { t.classList.remove("on"); }, 2200);
+  }
+  function copyLink() {
+    var url = location.href;
+    if (navigator.clipboard && /^https?:/.test(location.protocol)) {
+      navigator.clipboard.writeText(url).then(function () { toast("Link copied"); }, function () { toast(url); });
+    } else toast(url);
   }
 
   // ------------------------------------------------------------------ state
   function readHash() {
     var h = new URLSearchParams(location.hash.replace(/^#/, ""));
     st.q = h.get("q") || "";
-    st.district = h.get("d") && DISTRICTS[h.get("d")] ? h.get("d") : null;
-    st.cat = h.get("t") && CAT_LABEL[h.get("t")] ? h.get("t") : "all";
+    st.state = h.get("s") && GEO[h.get("s")] ? h.get("s") : (h.get("s") === "Unknown" ? "Unknown" : null);
+    st.district = st.state && h.get("d") ? h.get("d") : null;
+    st.cat = TYPE_LABEL[h.get("t")] ? h.get("t") : "all";
+    st.v = h.get("v") === "states" && !st.state && !st.q ? "states" : "";
     st.shown = PAGE;
   }
-  function writeHash() {
+  function hashFor(o) {
     var h = new URLSearchParams();
-    if (st.district) h.set("d", st.district);
-    if (st.q) h.set("q", st.q);
-    if (st.cat !== "all") h.set("t", st.cat);
+    if (o.v) h.set("v", o.v);
+    if (o.state) h.set("s", o.state);
+    if (o.district) h.set("d", o.district);
+    if (o.q) h.set("q", o.q);
+    if (o.cat && o.cat !== "all") h.set("t", o.cat);
     var s = h.toString();
-    history.replaceState(null, "", s ? "#" + s : location.pathname + location.search);
+    return s ? "#" + s : location.pathname + location.search;
+  }
+  function sync(push) {
+    var url = hashFor(st);
+    if (url === (location.hash || location.pathname + location.search)) return;
+    try { history[push ? "pushState" : "replaceState"](null, "", url); } catch (e) { /* file:// in some browsers */ }
+  }
+  // Move to another view (adds a browser history step so Back works).
+  function go(o) {
+    st.v = o.v || ""; st.state = o.state || null; st.district = o.district || null;
+    st.q = o.q != null ? o.q : ""; st.shown = PAGE;
+    q.value = st.q; box.classList.toggle("has", !!st.q);
+    sync(true); render(); window.scrollTo(0, 0);
   }
 
   function passes(o) {
@@ -87,114 +116,350 @@
     if (!st.q) return 1;
     var words = st.q.toLowerCase().split(/\s+/).filter(Boolean);
     for (var i = 0; i < words.length; i++) if (o._s.indexOf(words[i]) < 0) return 0;
-    var q = st.q.toLowerCase(), names = [o.n].concat(o.k).join(" | ").toLowerCase();
-    if (names.indexOf(q) === 0) return 4;
-    if (names.indexOf(q) >= 0) return 3;
-    if ((" " + o._i + " ").indexOf(" " + q) >= 0) return 3;
+    var ql = st.q.toLowerCase(), names = [o.n].concat(o.k).join(" | ").toLowerCase();
+    if (names.indexOf(ql) === 0) return 4;
+    if (names.indexOf(ql) >= 0) return 3;
+    if ((" " + o._i + " ").indexOf(" " + ql) >= 0) return 3;
     return 1;
+  }
+  function pool(scope) {
+    return ORGS.filter(function (o) {
+      if (scope && scope.state && o.st !== scope.state) return false;
+      if (scope && scope.district && o.d !== scope.district) return false;
+      return passes(o);
+    });
+  }
+  function countBy(list, key) {
+    var c = {};
+    list.forEach(function (o) { var k = key(o); c[k] = (c[k] || 0) + 1; });
+    return c;
+  }
+
+  // -------------------------------------------------------------- the map
+  function project(bbox) {
+    var k = Math.cos((bbox[0] + bbox[2]) / 2 * Math.PI / 180);
+    return {
+      w: (bbox[3] - bbox[1]) * SCALE * k, h: (bbox[2] - bbox[0]) * SCALE,
+      x: function (lon) { return (lon - bbox[1]) * SCALE * k; },
+      y: function (lat) { return (bbox[2] - lat) * SCALE; }
+    };
+  }
+  // spots: [{lat, lon, n, label, go}]
+  function drawMap(bbox, spots, dims) {
+    var p = project(bbox);
+    var zoom = 560 / Math.max(p.w, p.h);  // above 1 when zoomed in on a state
+    var map = sv("svg", { "class": "map", viewBox: "0 0 " + p.w.toFixed(1) + " " + p.h.toFixed(1), role: "img",
+      preserveAspectRatio: "xMidYMid meet", "aria-label": "Map with " + plural(spots.length, "place") + " that have groups" });
+    var land = sv("g", { "class": "land" }), r = STEP * SCALE * (zoom > 1.6 ? 0.09 : 0.36);
+    GRID.forEach(function (c) {
+      if (c[0] < bbox[0] || c[0] > bbox[2] || c[1] < bbox[1] || c[1] > bbox[3]) return;
+      land.appendChild(sv("circle", { cx: p.x(c[1]).toFixed(1), cy: p.y(c[0]).toFixed(1), r: r.toFixed(2) }));
+    });
+    map.appendChild(land);
+    var unit = zoom > 1.6 ? Math.max(p.w, p.h) / 600 * 1.7 : 1;
+    (dims || []).forEach(function (s) {
+      var c = sv("circle", { "class": "spot dim", cx: p.x(s.lon).toFixed(1), cy: p.y(s.lat).toFixed(1), r: (3.4 * unit).toFixed(2) });
+      c.appendChild(sv("title", {})).textContent = s.label;
+      map.appendChild(c);
+    });
+    spots.sort(function (a, b) { return b.n - a.n; }).forEach(function (s) {
+      var c = sv("circle", { "class": "spot", cx: p.x(s.lon).toFixed(1), cy: p.y(s.lat).toFixed(1),
+        r: (unit * Math.min(3.2 + Math.sqrt(s.n) * 1.9, 15)).toFixed(2), tabindex: "0", role: "button",
+        "aria-label": s.label + ", " + plural(s.n, "group") });
+      c.appendChild(sv("title", {})).textContent = s.label + ": " + plural(s.n, "group");
+      c.addEventListener("click", s.go);
+      c.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); s.go(); } });
+      map.appendChild(c);
+    });
+    return map;
+  }
+  function districtSpots(list, state) {
+    var counts = countBy(list, function (o) { return o.st + "|" + o.d; }), spots = [];
+    Object.keys(GEO).forEach(function (s) {
+      if (state && s !== state) return;
+      GEO[s].forEach(function (d) {
+        var n = counts[s + "|" + d[0]];
+        if (d[1] == null) return;
+        var spot = { lat: d[1], lon: d[2], n: n || 0, label: d[0] + (state ? "" : ", " + s) };
+        spot.go = function () { go({ state: s, district: d[0] }); };
+        spots.push(spot);
+      });
+    });
+    return spots;
+  }
+
+  // ---------------------------------------------------------- dashboard bits
+  function card(cls, kids) { return el("section", { cls: "card " + (cls || "") }, kids); }
+  function corner(label, fn) {
+    var b = el("button", { cls: "round corner", type: "button", "aria-label": label, title: label }, [icon("i-arrow")]);
+    return on(b, fn);
+  }
+  function rankRows(items, total, limit, onPick, moreLabel) {
+    // items: [{name, n, go, zero}]
+    var wrap = el("div", { cls: "rows" });
+    var max = items.reduce(function (m, x) { return Math.max(m, x.n); }, 0) || 1;
+    function rowFor(x, i) {
+      var fill = el("div", { cls: "fill" });
+      fill.style.width = (x.n ? Math.max(100 * x.n / max, 3) : 0) + "%";
+      var b = el("button", { cls: "rank" + (x.n ? "" : " zero"), type: "button" }, [
+        el("span", { cls: "r", text: (i < 9 ? "0" : "") + (i + 1) }),
+        el("span", { cls: "nm", text: x.name, title: x.name }),
+        el("div", { cls: "track" }, [fill]),
+        el("span", { cls: "ct", text: fmt(x.n), title: plural(x.n, "group") }),
+        el("span", { cls: "pc", text: pct(x.n, total) + "%" })
+      ]);
+      return on(b, x.go);
+    }
+    items.slice(0, limit).forEach(function (x, i) { wrap.appendChild(rowFor(x, i)); });
+    var frag = el("div", null, [wrap]);
+    if (items.length > limit) {
+      var rest = items.length - limit;
+      var t = el("button", { cls: "more-toggle", type: "button", "aria-expanded": "false" },
+        [el("span", { cls: "plusdot" }, [plusIcon()]), el("span", { text: moreLabel ? moreLabel(rest) : rest + " more" })]);
+      on(t, function () {
+        if (onPick) { onPick(); return; }
+        items.slice(limit).forEach(function (x, i) { wrap.appendChild(rowFor(x, i + limit)); });
+        t.remove();
+      });
+      frag.appendChild(t);
+    }
+    return frag;
+  }
+  function plusIcon() {
+    var s = sv("svg", { "class": "icon", viewBox: "0 0 24 24", "aria-hidden": "true" });
+    s.appendChild(sv("path", { d: "M12 5v14M5 12h14" }));
+    return s;
+  }
+  function typeBars(list) {
+    var counts = { animal: 0, wildlife: 0, cattle: 0, none: 0 };
+    list.forEach(function (o) { if (!o.c.length) counts.none++; o.c.forEach(function (c) { counts[c]++; }); });
+    var keys = ["animal", "wildlife", "cattle"].concat(counts.none ? ["none"] : []);
+    var max = Math.max.apply(null, keys.map(function (k) { return counts[k]; })) || 1;
+    var bars = el("div", { cls: "bars" });
+    keys.forEach(function (k) {
+      var b = el("div", { cls: "bar" + (counts[k] === max ? " stripe" : "") });
+      b.style.height = Math.max(100 * counts[k] / max, 10) + "%";
+      b.appendChild(el("span", { cls: "barbadge", text: fmt(counts[k]) }));
+      var col = el("button", { cls: "barcol", type: "button", "aria-pressed": String(st.cat === k),
+        "aria-label": (TYPE_LABEL[k] || "Type not clear") + ", " + plural(counts[k], "group") },
+        [b, el("small", { text: TYPE_LABEL[k] || "Not clear" })]);
+      if (k === "none") col.disabled = true;
+      else on(col, function () { setType(st.cat === k ? "all" : k); });
+      bars.appendChild(col);
+    });
+    return card("", [el("div", { cls: "label", text: "By type" }), el("div", { cls: "number", text: fmt(list.length) }),
+      el("div", { cls: "caption", text: "Tap a bar to filter" }), bars]);
+  }
+  function quality(list) {
+    var named = list.filter(function (o) { return o.pp.length; }).length;
+    function stat(label, n) {
+      var f = el("div", { cls: "fill" }); f.style.width = pct(n, list.length) + "%";
+      return el("div", { cls: "stat" }, [el("span", { text: label }), el("span", { cls: "muted", text: fmt(n) }),
+        el("div", { cls: "track" }, [f])]);
+    }
+    return card("", [
+      el("div", { cls: "label", text: "Who runs it known" }),
+      el("div", { cls: "headline" }, [el("div", { cls: "number", text: fmt(named) }),
+        el("div", null, [el("span", { cls: "badge", text: pct(named, list.length) + "%" }), el("small", { text: "of groups listed" })])]),
+      el("div", { cls: "stats" }, [
+        stat("Phone or email", list.filter(function (o) { return o.p.length || o.e.length; }).length),
+        stat("AWBI recognised", list.filter(function (o) { return o.ac; }).length),
+        stat("Website", list.filter(function (o) { return o.w; }).length)
+      ])
+    ]);
+  }
+  function stateItems(list, withZero) {
+    var counts = countBy(list, function (o) { return o.st; });
+    var names = Object.keys(GEO).concat(counts.Unknown ? ["Unknown"] : []);
+    return names.filter(function (s) { return withZero || counts[s]; }).map(function (s) {
+      return { name: sName(s), n: counts[s] || 0, go: function () { go({ state: s }); } };
+    }).sort(function (a, b) { return b.n - a.n || a.name.localeCompare(b.name); });
+  }
+  function districtItems(list, state, withZero) {
+    var counts = countBy(list, function (o) { return o.st + "|" + o.d; });
+    var names = [];
+    Object.keys(GEO).forEach(function (s) {
+      if (state && s !== state) return;
+      GEO[s].forEach(function (d) { names.push([s, d[0]]); });
+    });
+    Object.keys(counts).forEach(function (k) {
+      var p = k.split("|");
+      if (p[1] === "Unknown" && (!state || p[0] === state)) names.push(p);
+    });
+    return names.filter(function (x) { return withZero || counts[x[0] + "|" + x[1]]; }).map(function (x) {
+      return { name: dName(x[1]) + (state ? "" : ", " + sName(x[0])), n: counts[x[0] + "|" + x[1]] || 0,
+        go: function () { go({ state: x[0], district: x[1] }); } };
+    }).sort(function (a, b) { return b.n - a.n || a.name.localeCompare(b.name); });
   }
 
   // ------------------------------------------------------------------ views
-  var view;
+  function setHeader(crumbs, title, sub) {
+    var c = $("crumbs"); c.textContent = "";
+    crumbs.forEach(function (x) {
+      c.appendChild(on(el("button", { cls: "crumb", type: "button" }, [icon("i-back"), x[0]]), x[1]));
+    });
+    $("title").textContent = title;
+    $("sub").textContent = sub;
+    document.title = title === "Animal NGOs of India" ? title : title + " | Animal NGOs of India";
+  }
+  function railOn() {
+    var which = st.q ? "search" : (st.v || st.state) ? "states" : "home";
+    Array.prototype.forEach.call(document.querySelectorAll("[data-go]"), function (b) {
+      b.classList.toggle("on", b.getAttribute("data-go") === which);
+    });
+  }
 
   function render() {
-    writeHash();
     view.textContent = "";
-    if (!st.q && !st.district) renderDistricts();
-    else renderResults();
+    railOn();
+    if (st.q) renderSearch();
+    else if (st.v === "states") renderStates();
+    else if (st.state && st.district) renderDistrict();
+    else if (st.state) renderState();
+    else renderHome();
   }
 
-  function renderDistricts() {
-    var counts = {};
-    ORGS.forEach(function (o) { if (passes(o)) counts[o.d] = (counts[o.d] || 0) + 1; });
-    var names = Object.keys(DISTRICTS).sort(function (a, b) {
-      if (a === "Unknown") return 1; if (b === "Unknown") return -1;
-      return (counts[b] || 0) - (counts[a] || 0) || a.localeCompare(b);
-    });
-    view.appendChild(el("h2", { text: "Pick a district" }));
-    var wrap = el("div", { cls: "tiles" });
-    names.forEach(function (d) {
-      var n = counts[d] || 0;
-      var t = el("button", { cls: "tile" + (n ? "" : " zero"), type: "button" },
-        [el("span", { text: districtLabel(d) }), el("span", { cls: "count", text: String(n) })]);
-      t.addEventListener("click", function () { st.district = d; st.shown = PAGE; render(); window.scrollTo(0, 0); });
-      wrap.appendChild(t);
-    });
-    view.appendChild(wrap);
+  function renderHome() {
+    var list = pool();
+    var places = districtItems(list, null, false);
+    var states = stateItems(list, false);
+    setHeader([], "Animal NGOs of India", plural(list.length, "group") + " in " + plural(states.length, "state") +
+      (META.date ? ". Updated " + META.date + "." : "."));
+    var map = card("mapcard", [
+      el("div", { cls: "label", text: "Groups on the map" }),
+      el("div", { cls: "number", text: fmt(list.length) }),
+      el("div", { cls: "caption", text: "in " + plural(places.filter(function (p) { return p.name.indexOf("District not known") < 0; }).length, "district") }),
+      corner("All states", function () { go({ v: "states" }); }),
+      drawMap([6, 67.6, 37.6, 97.6], districtSpots(list).filter(function (s) { return s.n; })),
+      el("div", { cls: "maptip", text: "Tap a blue dot to open that district" })
+    ]);
+    var topStates = card("", [el("div", { cls: "label", text: "Top states" }), el("div", { cls: "number", text: fmt(states.length) }),
+      el("div", { cls: "caption", text: "with groups listed" }), corner("All states", function () { go({ v: "states" }); }),
+      rankRows(states, list.length, TOP, function () { go({ v: "states" }); }, function () { return "All states"; })]);
+    var topPlaces = card("", [el("div", { cls: "label", text: "Top districts" }), el("div", { cls: "number", text: fmt(places.length) }),
+      el("div", { cls: "caption", text: "with groups listed" }),
+      rankRows(places, list.length, TOP, null, function (n) { return plural(n, "more district"); })]);
+    view.appendChild(el("div", { cls: "dash" }, [map, typeBars(list), quality(list), el("div", { cls: "wide" }, [topStates, topPlaces])]));
   }
 
-  function renderResults() {
+  function renderStates() {
+    var list = pool(), items = stateItems(list, true);
+    setHeader([["India", function () { go({}); }]], "All states",
+      plural(items.filter(function (x) { return x.n; }).length, "state") + " and union territories with groups, of " + fmt(Object.keys(GEO).length));
+    view.appendChild(card("", [el("div", { cls: "label", text: "States and union territories" }),
+      rankRows(items, list.length, items.length)]));
+  }
+
+  function renderState() {
+    var s = st.state, list = pool({ state: s });
+    var all = (GEO[s] || []).length, items = districtItems(list, s, true);
+    var withGroups = items.filter(function (x) { return x.n; });
+    setHeader([["India", function () { go({}); }]], sName(s),
+      plural(list.length, "group") + (all ? " in " + fmt(withGroups.filter(function (x) { return x.name !== "District not known"; }).length) + " of " + plural(all, "district") : "") + ".");
+    var spots = districtSpots(list, s);
+    var bbox = bboxOf(spots);
+    var kids = [];
+    if (bbox) {
+      kids.push(card("mapcard", [el("div", { cls: "label", text: "Districts with groups" }),
+        el("div", { cls: "number", text: fmt(withGroups.length) }), el("div", { cls: "caption", text: "of " + fmt(all) }),
+        drawMap(bbox, spots.filter(function (x) { return x.n; }), spots.filter(function (x) { return !x.n; })),
+        el("div", { cls: "maptip", text: "Blue: has groups. White: none listed yet." })]));
+    }
+    kids.push(card("", [el("div", { cls: "label", text: "Districts" }),
+      rankRows(items, list.length, 6, null, function (n) { return plural(n, "more district"); })]));
+    kids.push(quality(list));
+    view.appendChild(el("div", { cls: "dash state" }, kids));
+    st.shown = Math.min(st.shown, 12);
+    results(list, "All groups in " + sName(s), true);
+  }
+  function bboxOf(spots) {
+    if (!spots.length) return null;
+    var b = [90, 180, -90, -180];
+    spots.forEach(function (x) { b = [Math.min(b[0], x.lat), Math.min(b[1], x.lon), Math.max(b[2], x.lat), Math.max(b[3], x.lon)]; });
+    var cy = (b[0] + b[2]) / 2, cx = (b[1] + b[3]) / 2;
+    var h = Math.max(b[2] - b[0] + 1.6, 3), w = Math.max(b[3] - b[1] + 1.6, 3);
+    return [cy - h / 2, cx - w / 2, cy + h / 2, cx + w / 2];
+  }
+
+  function renderDistrict() {
+    var list = pool({ state: st.state, district: st.district });
+    setHeader([["India", function () { go({}); }], [sName(st.state), function () { go({ state: st.state }); }]],
+      dName(st.district), plural(list.length, "group") + " in " + dName(st.district) + ", " + sName(st.state) + ".");
+    results(list, null, false);
+  }
+
+  function renderSearch() {
+    var scope = st.state ? { state: st.state, district: st.district } : null;
     var list = [];
-    ORGS.forEach(function (o) {
-      if (st.district && o.d !== st.district) return;
-      if (!passes(o)) return;
-      var s = score(o);
-      if (s) list.push([s, o]);
-    });
+    pool(scope).forEach(function (o) { var s = score(o); if (s) list.push([s, o]); });
     list.sort(function (a, b) { return b[0] - a[0] || a[1].n.localeCompare(b[1].n); });
     list = list.map(function (x) { return x[1]; });
+    var where = st.district ? dName(st.district) + ", " + sName(st.state) : st.state ? sName(st.state) : "India";
+    var crumbs = [["India", function () { go({}); }]];
+    if (st.state) crumbs.push([sName(st.state), function () { go({ state: st.state }); }]);
+    setHeader(crumbs, "“" + st.q + "”".replace(/./, "”"), plural(list.length, "group") + " in " + where + ".");
+    $("title").textContent = "Results for " + st.q;
+    var extra = scope ? on(el("button", { cls: "pill", type: "button", text: "Search all of India" }), function () { go({ q: st.q }); }) : null;
+    results(list, null, !st.district, extra);
+  }
 
-    var bar = el("div", { cls: "bar" });
-    if (st.district) {
-      var back = el("button", { cls: "back", type: "button" }, [svg([["M15 6l-6 6 6 6"]]), "All districts"]);
-      back.addEventListener("click", function () { st.district = null; render(); });
-      bar.appendChild(back);
+  function results(list, heading, showDistrict, extra) {
+    if (heading || extra) {
+      view.appendChild(el("div", { cls: "resultbar" }, [
+        el("div", null, [heading ? el("h2", { text: heading }) : null, heading ? el("div", { cls: "muted", text: plural(list.length, "group") }) : null]),
+        extra
+      ]));
     }
-    bar.appendChild(el("h2", { text: st.district ? districtLabel(st.district) : "Search results" }));
-    bar.appendChild(el("span", { cls: "n", text: plural(list.length, "group") }));
-    var share = el("button", { cls: "share", type: "button", text: "Copy link" });
-    share.addEventListener("click", function () {
-      var url = location.href;
-      if (navigator.clipboard) navigator.clipboard.writeText(url).then(function () { toast("Link copied"); }, function () { toast(url); });
-      else toast(url);
-    });
-    bar.appendChild(share);
-    view.appendChild(bar);
-
     if (!list.length) {
-      var e = el("div", { cls: "empty" }, [
-        el("div", { text: st.q ? "Nothing matches \"" + st.q + "\"" + (st.district ? " in " + districtLabel(st.district) : "") + "." : "No groups here with these filters." }),
-        el("div", { cls: "n", text: "Try a town name, a short name like PFA, fewer words, or a different type." })
+      var e = el("div", { cls: "empty card" }, [
+        el("div", { text: st.q ? "Nothing matches “".slice(0, 15) + st.q + "\"." : "No groups here with these filters." }),
+        el("div", { cls: "muted", text: "Try a town name, a short name like PFA, fewer words, or a different type." })
       ]);
-      var reset = el("button", { cls: "back", type: "button", text: "Clear search and filters" });
-      reset.addEventListener("click", resetAll);
-      e.appendChild(reset);
+      e.appendChild(on(el("button", { cls: "pill", type: "button", text: "Clear search and filters" }), resetAll));
       view.appendChild(e);
       return;
     }
-
     var ul = el("ul", { cls: "list" });
-    list.slice(0, st.shown).forEach(function (o) { ul.appendChild(row(o)); });
     view.appendChild(ul);
+    function page() {
+      list.slice(ul.children.length, st.shown).forEach(function (o) { ul.appendChild(row(o, showDistrict)); });
+    }
+    page();
     if (list.length > st.shown) {
-      var more = el("button", { cls: "showmore", type: "button", text: "Show " + Math.min(PAGE, list.length - st.shown) + " more" });
-      more.addEventListener("click", function () { st.shown += PAGE; render(); });
+      var more = el("button", { cls: "pill showmore", type: "button" });
+      var label = function () { more.textContent = "Show " + Math.min(PAGE, list.length - st.shown) + " more (" + fmt(list.length - st.shown) + " left)"; };
+      label();
+      on(more, function () {
+        st.shown = Math.max(st.shown, ul.children.length) + PAGE; page();
+        if (list.length > st.shown) label(); else more.remove();
+      });
       view.appendChild(more);
     }
   }
 
   function resetAll() {
-    q.value = ""; st.q = ""; box.classList.remove("has"); st.cat = "all";
-    st.contact = st.people = st.awbi = st.verified = false;
+    st.cat = "all"; st.contact = st.people = st.awbi = st.verified = false;
     ["fContact", "fPeople", "fAwbi", "fVerified"].forEach(function (id) { $(id).checked = false; });
-    syncPills(); render();
+    syncTypes(); syncFilterDot();
+    go({ state: st.state, district: st.district });
   }
 
   var rowId = 0;
-  function row(o) {
+  function row(o, showDistrict) {
     var li = el("li", { cls: "item" });
-    var id = "d" + (++rowId);
-    var area = [o.a, st.district ? "" : districtLabel(o.d)].filter(function (v, i, a) { return v && a.indexOf(v) === i; }).join(", ");
+    var id = "g" + (++rowId);
+    var place = [o.a];
+    if (showDistrict) place.push(dName(o.d));
+    if (!st.state) place.push(sName(o.st));
+    place = place.filter(function (v, i, a) { return v && a.indexOf(v) === i && v !== "District not known"; }).join(", ");
     var meta = el("div", { cls: "meta" }, [
-      el("span", { cls: "tag", text: o.c.map(function (c) { return CAT_LABEL[c]; }).join(", ") || "Type not clear" }),
-      area ? el("span", { text: area }) : null,
-      o.ac ? el("span", { cls: "awbi", title: "Recognised by the Animal Welfare Board of India", text: "AWBI" }) : null,
-      o.u ? el("span", { cls: "flag", text: "Not verified" }) : null
+      el("span", { cls: "chip", text: o.c.map(function (c) { return TYPE_LABEL[c]; }).join(", ") || "Type not clear" }),
+      o.ac ? el("span", { cls: "chip awbi", title: "Recognised by the Animal Welfare Board of India", text: "AWBI" }) : null,
+      o.u ? el("span", { cls: "chip flag", text: "Not verified" }) : null,
+      place ? el("span", { text: place }) : null
     ]);
-    var aka = null;
     var bare = function (x) { return x.toLowerCase().replace(/[^a-z0-9]/g, ""); };
     var alt = o.k.filter(function (k) { return bare(o.n).indexOf(bare(k)) < 0 && bare(k).indexOf(bare(o.n)) < 0; })[0];
-    if (alt) aka = el("div", { cls: "aka", text: "Also known as " + alt });
     var runby = null;
     if (o.pp.length) {
       var lead = o.pp[0];
@@ -202,13 +467,13 @@
         lead.r ? ", " + lead.r.charAt(0).toLowerCase() + lead.r.slice(1) : "",
         o.pp.length > 1 ? " +" + (o.pp.length - 1) + " more" : ""]);
     }
-    var plus = el("span", { cls: "plus", "aria-hidden": "true" });
-    plus.appendChild(svg([["M5 12h14"], ["M12 5v14", "v"]]));
-    var head = el("button", { cls: "head", type: "button", "aria-expanded": "false", "aria-controls": id },
-      [el("div", { cls: "body" }, [el("div", { cls: "nm", text: o.n }), aka, meta, runby]), plus]);
+    var head = el("button", { cls: "head", type: "button", "aria-expanded": "false", "aria-controls": id }, [
+      el("div", { cls: "body" }, [el("div", { cls: "nm", text: o.n }), alt ? el("div", { cls: "aka", text: "Also known as " + alt }) : null, meta, runby]),
+      el("span", { cls: "plus", "aria-hidden": "true" }, [plusIcon()])
+    ]);
     var detail = el("div", { cls: "detail", id: id });
     var built = false;
-    head.addEventListener("click", function () {
+    on(head, function () {
       var open = !li.classList.contains("open");
       if (open && !built) { fillDetail(detail, o); built = true; }
       li.classList.toggle("open", open);
@@ -264,14 +529,14 @@
     }
 
     var tog = el("button", { cls: "more-toggle", type: "button", "aria-expanded": "false" },
-      [svg([["M12 5v14M5 12h14", "fv"]]), el("span", { text: "More details" })]);
+      [el("span", { cls: "plusdot" }, [plusIcon()]), el("span", { text: "More details" })]);
     var more = el("div", { cls: "more" });
     var dl = el("dl");
     function line(k, v) { if (v) { dl.appendChild(el("dt", { text: k })); dl.appendChild(typeof v === "string" ? el("dd", { text: v }) : el("dd", null, [v])); } }
     if (o.k.length) line("Also known as", o.k.join(", "));
     if (o.ad && o.ad !== o.a) line("Address", o.ad);
     if (o.ra && o.ra !== o.ad) line(o.ad ? "Registered address" : "Address", o.ra);
-    line("Area", [o.a, districtLabel(o.d)].filter(Boolean).join(", "));
+    line("Area", [o.a, o.d !== "Unknown" ? o.d : "", o.st !== "Unknown" ? o.st : ""].filter(Boolean).join(", "));
     line("Phones", linkList(o.p, function (x) { return "tel:" + x.replace(/[^\d+]/g, ""); }));
     line("Emails", linkList(o.e, function (x) { return "mailto:" + x; }));
     line("Website", linkList(o.w ? [o.w] : [], function (x) { return x; }));
@@ -281,75 +546,99 @@
     if (o.nt.length) line("Notes", o.nt.join(". "));
     line("Sources", linkList(o.sr, function (x) { return x; }, host));
     more.appendChild(dl);
-    tog.addEventListener("click", function () {
+    on(tog, function () {
       var open = !more.classList.contains("open");
       more.classList.toggle("open", open); tog.setAttribute("aria-expanded", String(open));
-      tog.querySelector(".fv").setAttribute("d", open ? "M5 12h14" : "M12 5v14M5 12h14");
+      tog.lastChild.textContent = open ? "Fewer details" : "More details";
     });
     d.appendChild(tog); d.appendChild(more);
   }
 
   // ---------------------------------------------------------------- wiring
-  var pills, q, box;
-  function syncPills() {
-    Array.prototype.forEach.call(pills.children, function (x) { x.setAttribute("aria-pressed", String(x.getAttribute("data-cat") === st.cat)); });
+  var types, q, box;
+  function syncTypes() {
+    Array.prototype.forEach.call(types.children, function (x) { x.setAttribute("aria-pressed", String(x.getAttribute("data-t") === st.cat)); });
+  }
+  function setType(t) { st.cat = t; st.shown = PAGE; syncTypes(); sync(false); render(); }
+  function syncFilterDot() { $("filterDot").classList.toggle("on", st.contact || st.people || st.awbi || st.verified); }
+  function toggleFilters(force) {
+    var f = $("filters"), open = force != null ? force : f.hidden;
+    f.hidden = !open; $("filterBtn").setAttribute("aria-expanded", String(open));
+    if (open) { window.scrollTo(0, 0); $("fContact").focus(); }
   }
 
   function boot(DB) {
     META = DB.meta || {};
+    GEO = META.states || {};
+    GRID = META.grid || [];
     ORGS = DB.orgs || [];
     ORGS.forEach(function (o) {
-      o.k = o.k || []; o.sr = o.sr || [];
+      o.k = o.k || []; o.sr = o.sr || []; o.st = o.st || "Unknown";
       o.pp.sort(function (a, b) { return roleRank(a.r) - roleRank(b.r); });
       o._i = [o.n].concat(o.k).map(initials).join(" ");
-      o._s = [o.n, o.k.join(" "), o.d, o.a, o.ad, o.ra, o.ac, o._i]
+      o._s = [o.n, o.k.join(" "), o.d, o.st, o.a, o.ad, o.ra, o.ac, o._i]
         .concat(o.pp.map(function (p) { return p.n + " " + p.r; })).join(" ").toLowerCase();
-      DISTRICTS[o.d] = 1;
     });
-    var real = Object.keys(DISTRICTS).filter(function (d) { return d !== "Unknown"; }).length;
-    $("sub").textContent = plural(ORGS.length, "group") + " across " + plural(real, "district") +
-      (META.date ? ". Updated " + META.date + "." : ".");
 
     var foot = $("foot");
-    foot.appendChild(el("p", { text: "Sources: the Animal Welfare Board of India list of recognised organisations" +
-      (META.awbi_date ? " (as on " + META.awbi_date + ")" : "") +
-      ", the groups' own websites and pages, news reports and NGO directories. Every entry links to where its details come from." }));
-    foot.appendChild(el("p", { text: "Names under \"Who runs it\" are as published by each source; confirm when you get in touch." }));
-    if (META.ola) foot.appendChild(el("p", { text: "Map listings from Ola Maps. That data is available under the Open Database License." }));
+    foot.hidden = false;
+    add(foot, [
+      el("p", { text: "Sources: the Animal Welfare Board of India list of recognised organisations" +
+        (META.awbi_date ? " (as on " + META.awbi_date + ")" : "") +
+        ", the groups' own websites and pages, news reports and NGO directories. Every entry links to where its details come from." }),
+      el("p", { text: "Names under \"Who runs it\" are as published by each source; confirm when you get in touch. District locations on the map are approximate." }),
+      META.ola ? el("p", { text: "Map listings from Ola Maps. That data is available under the Open Database License." }) : null,
+      el("p", { text: "Map outline from India Post PIN code locations." })
+    ]);
 
-    pills = $("pills");
-    CATS.forEach(function (c) {
-      var b = el("button", { cls: "pill", type: "button", "data-cat": c[0], "aria-pressed": "false", text: c[1] });
-      b.addEventListener("click", function () { st.cat = c[0]; st.shown = PAGE; syncPills(); render(); });
-      pills.appendChild(b);
+    types = $("types");
+    TYPES.forEach(function (t) {
+      var b = el("button", { cls: "pill", type: "button", "data-t": t[0], "aria-pressed": "false" }, [icon(t[2]), t[1]]);
+      types.appendChild(on(b, function () { setType(t[0]); }));
     });
 
-    var ft = $("ftoggle"), fl = $("filters");
-    ft.addEventListener("click", function () {
-      var open = !fl.classList.contains("open");
-      fl.classList.toggle("open", open); ft.setAttribute("aria-expanded", String(open));
-      ft.querySelector(".fv").setAttribute("d", open ? "M5 12h14" : "M12 5v14M5 12h14");
-    });
+    on($("filterBtn"), function () { toggleFilters(); });
     [["fContact", "contact"], ["fPeople", "people"], ["fAwbi", "awbi"], ["fVerified", "verified"]].forEach(function (p) {
-      $(p[0]).addEventListener("change", function (e) { st[p[1]] = e.target.checked; st.shown = PAGE; render(); });
+      $(p[0]).addEventListener("change", function (e) { st[p[1]] = e.target.checked; st.shown = PAGE; syncFilterDot(); render(); });
     });
+    on($("share"), copyLink);
+
+    Array.prototype.forEach.call(document.querySelectorAll("[data-go]"), function (b) {
+      on(b, function () {
+        var g = b.getAttribute("data-go");
+        if (g === "home") go({});
+        else if (g === "states") go({ v: "states" });
+        else if (g === "search") { window.scrollTo(0, 0); q.focus(); }
+        else if (g === "filters") toggleFilters();
+        else if (g === "share") copyLink();
+        else if (g === "about") foot.scrollIntoView({ behavior: "smooth" });
+      });
+    });
+    on(document.querySelector(".logo"), function (e) { e.preventDefault(); go({}); });
 
     q = $("q"); box = $("searchbox");
-    var timer;
+    var timer, typing = false;
     q.addEventListener("input", function () {
       clearTimeout(timer);
-      timer = setTimeout(function () { st.q = q.value.trim(); st.shown = PAGE; box.classList.toggle("has", !!q.value); render(); }, 120);
+      box.classList.toggle("has", !!q.value);
+      timer = setTimeout(function () {
+        var was = !!st.q;
+        st.q = q.value.trim(); st.v = ""; st.shown = PAGE;
+        sync(!was && !!st.q && !typing); typing = !!st.q;
+        render();
+      }, 140);
     });
-    $("clear").addEventListener("click", function () { q.value = ""; st.q = ""; box.classList.remove("has"); render(); q.focus(); });
+    on($("clear"), function () { q.value = ""; st.q = ""; typing = false; box.classList.remove("has"); sync(false); render(); q.focus(); });
 
     view = $("view");
     function fromHash() {
       readHash();
       q.value = st.q; box.classList.toggle("has", !!st.q);
-      syncPills();
+      syncTypes();
       render();
     }
     window.addEventListener("hashchange", fromHash);
+    window.addEventListener("popstate", fromHash);
     fromHash();
   }
 

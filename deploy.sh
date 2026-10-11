@@ -1,5 +1,5 @@
 #!/bin/bash
-# Publish the karnataka-animal-ngos website folder to Vercel.
+# Publish the website folder (site) to Vercel.
 # First run asks you to log in to Vercel in the browser.
 set -e
 cd "$(dirname "$0")"
@@ -15,6 +15,6 @@ if ! command -v npx >/dev/null 2>&1; then
   exit 1
 fi
 
-cd karnataka-animal-ngos
-npx --yes vercel@latest link --yes --project karnataka-animal-ngos
+cd site
+npx --yes vercel@latest link --yes --project ngo-finder
 npx --yes vercel@latest deploy --prod --yes
