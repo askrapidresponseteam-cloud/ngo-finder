@@ -4,11 +4,11 @@
 
   var TYPES = [["all", "All", "i-grid"], ["animal", "Animal welfare", "i-paw"], ["wildlife", "Wildlife", "i-leaf"], ["cattle", "Gaushala", "i-cow"]];
   var TYPE_LABEL = { animal: "Animal welfare", wildlife: "Wildlife", cattle: "Gaushala" };
-  var PAGE = 40, TOP = 6, SCALE = 20, STEP = 0.5;
+  var PAGE = 40, TOP = 6, SCALE = 20;
   var SMALL = /^(of|for|and|the|to|a|an|in|on|at)$/i;
   var NS = "http://www.w3.org/2000/svg";
   var st = { v: "", q: "", cat: "all", state: null, district: null, shown: PAGE, contact: false, people: false, awbi: false, verified: false };
-  var ORGS = [], META = {}, GEO = {}, GRID = [];
+  var ORGS = [], META = {}, GEO = {}, SHAPES = {};
   var view;
 
   // ---------------------------------------------------------------- helpers
@@ -145,15 +145,40 @@
     };
   }
   // spots: [{lat, lon, n, label, go}]
-  function drawMap(bbox, spots, dims) {
+  // Ladakh is drawn inside the Jammu and Kashmir outline of the map data.
+  function shapeOf(state) { return state === "Ladakh" ? "Jammu and Kashmir" : state; }
+  function pathOf(rings, p) {
+    return rings.map(function (r) {
+      var d = "";
+      for (var i = 0; i < r.length; i += 2) d += (i ? "L" : "M") + p.x(r[i]).toFixed(1) + " " + p.y(r[i + 1]).toFixed(1);
+      return d + "Z";
+    }).join("");
+  }
+  // opt: {counts: groups per state (overview), focus: the state being shown}
+  function drawMap(bbox, spots, dims, opt) {
+    opt = opt || {};
     var p = project(bbox);
     var zoom = 560 / Math.max(p.w, p.h);  // above 1 when zoomed in on a state
     var map = sv("svg", { "class": "map", viewBox: "0 0 " + p.w.toFixed(1) + " " + p.h.toFixed(1), role: "img",
-      preserveAspectRatio: "xMidYMid meet", "aria-label": "Map with " + plural(spots.length, "place") + " that have groups" });
-    var land = sv("g", { "class": "land" }), r = STEP * SCALE * (zoom > 1.6 ? 0.09 : 0.36);
-    GRID.forEach(function (c) {
-      if (c[0] < bbox[0] || c[0] > bbox[2] || c[1] < bbox[1] || c[1] > bbox[3]) return;
-      land.appendChild(sv("circle", { cx: p.x(c[1]).toFixed(1), cy: p.y(c[0]).toFixed(1), r: r.toFixed(2) }));
+      preserveAspectRatio: "xMidYMid meet", "aria-label": "Map of " + (opt.focus || "India") + " with " + plural(spots.length, "place") + " that have groups" });
+    var defs = sv("defs", {}), pat = sv("pattern", { id: "hatch", width: "6", height: "6", patternUnits: "userSpaceOnUse", patternTransform: "rotate(45)" });
+    pat.appendChild(sv("rect", { width: "6", height: "6", "class": "hatch-bg" }));
+    pat.appendChild(sv("rect", { width: "3", height: "6", "class": "hatch-line" }));
+    defs.appendChild(pat); map.appendChild(defs);
+    var land = sv("g", { "class": "land" });
+    var counts = opt.counts || {}, focus = opt.focus ? shapeOf(opt.focus) : "";
+    Object.keys(SHAPES).forEach(function (name) {
+      var n = 0;
+      Object.keys(counts).forEach(function (st) { if (shapeOf(st) === name) n += counts[st]; });
+      var cls = "st" + (focus ? (name === focus ? " sel" : " other") : (n ? " has" : ""));
+      var path = sv("path", { "class": cls, d: pathOf(SHAPES[name], p) });
+      var label = name === "Jammu and Kashmir" ? "Jammu and Kashmir, Ladakh" : name;
+      path.appendChild(sv("title", {})).textContent = label + (focus ? "" : ": " + plural(n, "group"));
+      if (!focus && n) {
+        var target = name === "Jammu and Kashmir" && !counts[name] ? "Ladakh" : name;
+        path.addEventListener("click", function () { go({ state: target }); });
+      }
+      land.appendChild(path);
     });
     map.appendChild(land);
     var unit = zoom > 1.6 ? Math.max(p.w, p.h) / 600 * 1.7 : 1;
@@ -330,8 +355,9 @@
       el("div", { cls: "number", text: fmt(list.length) }),
       el("div", { cls: "caption", text: "in " + plural(places.filter(function (p) { return p.name !== "District not known"; }).length, "district") }),
       corner("All states", function () { go({ v: "states" }); }),
-      drawMap([6, 67.6, 37.6, 97.6], districtSpots(list).filter(function (s) { return s.n; })),
-      el("div", { cls: "maptip", text: "Tap a blue dot to open that district" })
+      drawMap([6.2, 67.9, 37.3, 97.6], districtSpots(list).filter(function (s) { return s.n; }), null,
+        { counts: countBy(list, function (o) { return o.st; }) }),
+      el("div", { cls: "maptip", text: "Tap a state or a blue dot" })
     ]);
     var topStates = card("", [el("div", { cls: "label", text: "Top states" }), el("div", { cls: "number", text: fmt(states.length) }),
       el("div", { cls: "caption", text: "with groups listed" }), corner("All states", function () { go({ v: "states" }); }),
@@ -362,7 +388,7 @@
     if (bbox) {
       kids.push(card("mapcard", [el("div", { cls: "label", text: "Districts with groups" }),
         el("div", { cls: "number", text: fmt(withGroups.length) }), el("div", { cls: "caption", text: "of " + fmt(all) }),
-        drawMap(bbox, spots.filter(function (x) { return x.n; }), spots.filter(function (x) { return !x.n; })),
+        drawMap(bbox, spots.filter(function (x) { return x.n; }), spots.filter(function (x) { return !x.n; }), { focus: s }),
         el("div", { cls: "maptip", text: "Blue: has groups. White: none listed yet." })]));
     }
     kids.push(card("", [el("div", { cls: "label", text: "Districts" }),
@@ -570,7 +596,7 @@
   function boot(DB) {
     META = DB.meta || {};
     GEO = META.states || {};
-    GRID = META.grid || [];
+    SHAPES = META.shapes || {};
     ORGS = DB.orgs || [];
     ORGS.forEach(function (o) {
       o.k = o.k || []; o.sr = o.sr || []; o.st = o.st || "Unknown";
@@ -588,7 +614,7 @@
         ", the groups' own websites and pages, news reports and NGO directories. Every entry links to where its details come from." }),
       el("p", { text: "Names under \"Who runs it\" are as published by each source; confirm when you get in touch. District locations on the map are approximate." }),
       META.ola ? el("p", { text: "Map listings from Ola Maps. That data is available under the Open Database License." }) : null,
-      el("p", { text: "Map outline from India Post PIN code locations." })
+      META.map_credit ? el("p", { text: META.map_credit + ". District locations from India Post PIN codes." }) : null
     ]);
 
     types = $("types");
@@ -654,8 +680,17 @@
       try { boot(JSON.parse(inline.textContent)); } catch (e) { fail("The directory data could not be read."); }
       return;
     }
+    // The map outlines are a separate file; the directory still works without them.
+    var shapes = fetch("data/india-map.json").then(function (r) { return r.ok ? r.json() : {}; }, function () { return {}; });
     fetch("data/ngos.json", { cache: "no-cache" })
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function (db) {
+        return shapes.then(function (m) {
+          db.meta = db.meta || {};
+          if (m && m.shapes) { db.meta.shapes = m.shapes; db.meta.map_credit = m.credit || m.map_credit; }
+          return db;
+        });
+      })
       .then(boot)
       .catch(function () { fail("The directory could not be loaded. Check your connection and refresh the page."); });
   }

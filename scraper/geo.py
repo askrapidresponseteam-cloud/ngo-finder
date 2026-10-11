@@ -161,26 +161,6 @@ def locate(text, hint_state=""):
     return state, ""
 
 
-@lru_cache(maxsize=4)
-def map_grid(step=0.5):
-    """[lat, lon] cell centres covering India, from the PIN code locations."""
-    cells = set()
-    for _, _, lat, lon in _tables()[0].values():
-        if not lat or not lon:
-            continue
-        la, lo = float(lat), float(lon)
-        if 6 < la < 37.5 and 68 < lo < 97.5:
-            cells.add((round(la / step), round(lo / step)))
-    # Fill small gaps (cells mostly surrounded by land) so the outline reads as one shape.
-    for _ in range(2):
-        add = set()
-        for a, b in {(a + i, b + j) for a, b in cells for i in (-1, 0, 1) for j in (-1, 0, 1)} - cells:
-            if sum((a + i, b + j) in cells for i in (-1, 0, 1) for j in (-1, 0, 1)) >= 5:
-                add.add((a, b))
-        cells |= add
-    return [[round(a * step, 2), round(b * step, 2)] for a, b in sorted(cells)]
-
-
 @lru_cache(maxsize=1)
 def _pins_by_district():
     out = {}

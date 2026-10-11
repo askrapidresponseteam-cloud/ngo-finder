@@ -28,7 +28,7 @@ MUST_HAVE = [
 ]
 
 errors = []
-for f in ("index.html", "app.js", "styles.css", "vercel.json", "favicon.svg", "data/ngos.json"):
+for f in ("index.html", "app.js", "styles.css", "vercel.json", "favicon.svg", "data/ngos.json", "data/india-map.json"):
     if not os.path.exists(os.path.join(SITE, f)):
         errors.append("missing file: " + f)
 if not errors:

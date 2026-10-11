@@ -822,12 +822,6 @@ class TestGeo(unittest.TestCase):
         b = Org(name="People For Animals", source="test", state="Odisha", district="Khordha", sources=["y"])
         self.assertEqual(len(merge([a, b])), 2)
 
-    def test_map_grid_covers_india(self):
-        from scraper import geo
-        g = geo.map_grid()
-        self.assertGreater(len(g), 900)
-        self.assertTrue(all(6 < la < 38 and 67 < lo < 98 for la, lo in g))
-
 
 class TestNationwide(unittest.TestCase):
     def test_ola_plan_all_india_and_one_state(self):
@@ -851,7 +845,15 @@ class TestNationwide(unittest.TestCase):
         self.assertEqual(len(data["meta"]["states"]), 36)
         goa = dict((d[0], d[1:]) for d in data["meta"]["states"]["Goa"])
         self.assertIsNotNone(goa["North Goa"][0])
-        self.assertGreater(len(data["meta"]["grid"]), 900)
+        self.assertNotIn("shapes", data["meta"], "outlines ship as their own file")
+        data["meta"].update(lookup_page.state_shapes())
+        shapes = data["meta"]["shapes"]
+        self.assertEqual(set(shapes), set(__import__("scraper.geo", fromlist=["x"]).states()) - {"Ladakh"})
+        self.assertIn("MIT", data["meta"]["map_credit"])
+        for rings in shapes.values():
+            for r in rings:
+                self.assertEqual(len(r) % 2, 0)
+                self.assertTrue(all(6 < r[i + 1] < 38 and 67 < r[i] < 98 for i in range(0, len(r), 2)))
 
 
 class TestNoLongDashesInProject(unittest.TestCase):

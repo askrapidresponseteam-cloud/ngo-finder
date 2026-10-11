@@ -86,5 +86,7 @@ jobs:
             echo "No changes to the website data."
           else
             git commit -m "Refresh NGO data ($(date -u +%Y-%m-%d))"
+            # Code may have changed while the scrape ran; put the data on top of it.
+            git pull --rebase -X theirs origin main || { git checkout --theirs site/data/ngos.json && git add site/data/ngos.json && GIT_EDITOR=true git rebase --continue; }
             git push
           fi

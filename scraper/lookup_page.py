@@ -85,6 +85,17 @@ def geography():
     return out
 
 
+def state_shapes():
+    """State outlines for the map (see tools/build_map.py), or nothing if missing."""
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "india_states_map.json")
+    try:
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, ValueError):
+        return {}
+    return {"shapes": data.get("states", {}), "credit": data.get("credit", ""), "map_credit": data.get("credit", "")}
+
+
 def payload(orgs, generated=None):
     data = [record(o) for o in sorted(orgs, key=sort_key)]
     meta = {
@@ -93,7 +104,6 @@ def payload(orgs, generated=None):
         "count": len(data),
         "ola": any("Ola Maps" in o.sources for o in orgs),
         "states": geography(),
-        "grid": geo.map_grid(),
     }
     return {"meta": meta, "orgs": data}
 
@@ -111,7 +121,9 @@ def _between(html, tag, replacement):
 
 def build(orgs, generated=None):
     """One self-contained HTML page (styles, script and data inlined)."""
-    blob = json.dumps(payload(orgs, generated), ensure_ascii=False, separators=(",", ":"))
+    data = payload(orgs, generated)
+    data["meta"].update(state_shapes())
+    blob = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
     blob = blob.replace("</", "<\\/").replace("<!--", "<\\!--")
     html = _read("index.html")
     html = _between(html, "STYLES", "<style>\n" + _read("styles.css") + "</style>")
@@ -134,4 +146,7 @@ def build_site(orgs, out_dir, generated=None):
         shutil.copyfile(os.path.join(WEB, name), os.path.join(out_dir, name))
     with open(os.path.join(out_dir, "data", "ngos.json"), "w", encoding="utf-8") as fh:
         json.dump(payload(orgs, generated), fh, ensure_ascii=False, separators=(",", ":"))
+    # The map outlines never change with the data, so they ship as their own file.
+    with open(os.path.join(out_dir, "data", "india-map.json"), "w", encoding="utf-8") as fh:
+        json.dump(state_shapes(), fh, separators=(",", ":"))
     return out_dir

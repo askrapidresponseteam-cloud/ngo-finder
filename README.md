@@ -41,8 +41,8 @@ bash run.sh && bash deploy.sh
 
 ## The site
 
-- **Overview:** dotted map of India (blue dots are districts with groups; tap
-  one), groups by type, how many have a named person, contact or AWBI
+- **Overview:** map of India with state outlines (states with groups are
+  hatched blue, blue dots are districts with groups; tap either), groups by type, how many have a named person, contact or AWBI
   recognition, and the top states and districts.
 - **State:** map of that state's districts, ranked district list, then its groups.
 - **District or search:** the groups; tap + for contacts, who runs it, and
@@ -58,6 +58,10 @@ bash run.sh && bash deploy.sh
 - When the scraper downloads the AWBI list it keeps the national copy in
   `scraper/data/awbi_recognised_all.csv`, so later runs have every state even
   if awbi.gov.in is down.
+- State outlines on the map: `scraper/data/india_states_map.json`, built by
+  `tools/build_map.py` from india.topo.json in
+  https://github.com/varunon9/india-choropleth-javascript (MIT License).
+  Ladakh is drawn inside the Jammu and Kashmir outline of that file.
 - States and districts come from the India Post PIN code directory
   (`scraper/data/india_pins.csv`, `india_districts.csv`, built by
   `tools/build_geo.py`). Karnataka uses its current 31 districts.
