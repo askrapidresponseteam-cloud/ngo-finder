@@ -495,7 +495,8 @@ class TestOla(unittest.TestCase):
         self.ola.USAGE_FILE = self.orig_usage
 
     def http(self, text_fixture="ola_textsearch.json"):
-        return FakeHttp({"/textsearch": FakeResponse(fixture(text_fixture)),
+        return FakeHttp({"/autocomplete": FakeResponse(fixture(text_fixture)),
+                         "/nearbysearch": FakeResponse('{"predictions":[]}'),
                          "/details": FakeResponse(fixture("ola_details.json"))})
 
     def test_parses_both_response_shapes(self):
@@ -529,14 +530,16 @@ class TestOla(unittest.TestCase):
     def test_every_search_is_biased_to_its_district(self):
         http = self.http()
         self.ola.sweep(http, "KEY", cap=50, only=["Hassan"], log=lambda m: None, workers=1, with_details=False)
-        searches = [p for u, p in zip(http.calls, http.params) if "/textsearch" in u]
-        self.assertTrue(searches)
+        searches = [p for u, p in zip(http.calls, http.params) if "/autocomplete" in u]
+        self.assertEqual(len(searches), len(self.ola.plan(only=["Hassan"])))
         lat, lon = __import__("scraper.geo", fromlist=["x"]).centre("Karnataka", "Hassan")
-        for p in searches:
-            self.assertEqual(p["location"], "{},{}".format(lat, lon))
-            self.assertEqual(p["radius"], "40000")
-        self.assertEqual(searches[0]["input"], "animal shelter Hassan")
-        self.assertIn("animal shelter Arsikere", [p["input"] for p in searches])
+        centre = [p for p in searches if p["radius"] == "40000"]
+        self.assertEqual(len(centre), len(self.ola.CENTRE_TERMS))
+        self.assertTrue(all(p["location"] == "{},{}".format(lat, lon) for p in centre))
+        points = {p["location"] for p in searches if p["radius"] == "15000"}
+        self.assertGreaterEqual(len(points), 2)
+        self.assertTrue(all(p["location"] for p in searches))
+        self.assertIn("animal trust", [p["input"] for p in centre])
 
     def test_sweep_stops_at_monthly_cap(self):
         http = self.http()
@@ -545,13 +548,13 @@ class TestOla(unittest.TestCase):
         self.assertIn("monthly cap", info["stopped"])
 
     def test_check_reports_bad_key(self):
-        http = FakeHttp({"/textsearch": FakeResponse('{"message":"invalid api key"}', 401)})
+        http = FakeHttp({"/autocomplete": FakeResponse('{"message":"invalid api key"}', 401)})
         out = []
         self.assertFalse(self.ola.check(http, "BAD", log=out.append))
         self.assertTrue(any("rejected the key" in line for line in out))
 
     def test_bad_key_is_reported(self):
-        http = FakeHttp({"/textsearch": FakeResponse('{"message":"invalid api key"}', 401)})
+        http = FakeHttp({"/autocomplete": FakeResponse('{"message":"invalid api key"}', 401)})
         with self.assertRaises(PermissionError):
             self.ola.sweep(http, "BAD", cap=50, only=["Hassan"], log=lambda m: None, workers=1)
 
@@ -563,10 +566,18 @@ class TestOla(unittest.TestCase):
         self.assertTrue(http.params[0]["location"])
         self.assertTrue(any("[keep] Asare Animal Trust" in line for line in out))
         self.assertTrue(any("[skip] Happy Tails Pet Clinic" in line for line in out))
+        self.assertTrue(http.params[-1].get("place_id"), "details looks up the first place found")
+
+    def test_only_animal_groups_are_kept(self):
+        item = lambda n: {"name": n, "address": "Karnataka", "types": [], "closed": False}
+        for n in ("Asare Animal Trust", "Sri Krishna Gaushala", "Pinjrapole Deesa", "Visakha SPCA"):
+            self.assertTrue(self.ola.ola_candidate(item(n)), n)
+        for n in ("Asare Charitable Trust", "Mangalore Cafe", "Happy Tails Pet Clinic", "Glamour Burkha & Shawls"):
+            self.assertFalse(self.ola.ola_candidate(item(n)), n)
 
     def test_full_run_publishes_ola_listings_with_credit(self):
         import scraper.__main__ as cli
-        fake = FakeHttp({"/textsearch": FakeResponse(fixture("ola_textsearch.json")),
+        fake = FakeHttp({"/autocomplete": FakeResponse(fixture("ola_textsearch.json")),
                          "/details": FakeResponse(fixture("ola_details.json")),
                          "overpass": FakeResponse(fixture("osm_sample.json"))})
         out = tempfile.mkdtemp()
@@ -822,13 +833,14 @@ class TestNationwide(unittest.TestCase):
     def test_ola_plan_all_india_and_one_state(self):
         from scraper.sources import ola_places
         allp = ola_places.plan()
-        self.assertEqual({st for _, st, _, _ in allp}, set(__import__("scraper.geo", fromlist=["x"]).states()))
-        self.assertTrue(all(loc for _, _, _, loc in allp), "every search needs a location")
+        self.assertEqual({st for _, st, _, _, _ in allp}, set(__import__("scraper.geo", fromlist=["x"]).states()))
+        self.assertTrue(all(loc for _, _, _, loc, _ in allp), "every search needs a location")
+        self.assertLess(len(allp), 40000, "must fit the free monthly tier with room for details")
         ka = ola_places.plan(states=["Karnataka"])
-        self.assertTrue(ka and all(st == "Karnataka" for _, st, _, _ in ka))
+        self.assertTrue(ka and all(st == "Karnataka" for _, st, _, _, _ in ka))
         goa = ola_places.plan(states=["Goa"])
-        self.assertEqual({d for _, _, d, _ in goa}, {"North Goa", "South Goa"})
-        self.assertIn(("animal shelter North Goa", "Goa", "North Goa"), [x[:3] for x in goa])
+        self.assertEqual({d for _, _, d, _, _ in goa}, {"North Goa", "South Goa"})
+        self.assertIn(("animal trust", "Goa", "North Goa"), [x[:3] for x in goa])
 
     def test_site_payload_has_states_and_map(self):
         orgs = [Org(name="Goa Animal Welfare Trust", source="test", state="Goa", district="North Goa", sources=["AWBI"],

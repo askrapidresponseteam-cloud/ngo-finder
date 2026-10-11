@@ -64,13 +64,17 @@ bash run.sh && bash deploy.sh
 
 ## Ola Maps key (finds the small shelters, free)
 
-Most small shelters and rescue trusts only exist as map listings. The scraper
-searches Ola Maps in every district of India (about 5,600 searches; Karnataka
-also by taluk town and Bengaluru locality), plus one details lookup per
-shelter found. Each search is centred on its district (Ola searches around
-Bengaluru when no location is given). `--ola-check` makes 6 test searches
-and shows which search styles return places. Ola's free tier is 100,000 requests a month with no billing
-needed, and the scraper stops itself at 90,000 (`--ola-max`).
+Most small shelters and rescue trusts only exist as map listings. Ola's
+text search does not answer category searches like "animal shelter", but its
+autocomplete finds places by name near a location, and animal groups nearly
+always have the word in their name. So the scraper asks autocomplete for
+words like "animal trust", "gaushala" and "spca" around the centre of every
+district of India, and "animal", "gaushala", "rescue" and "shelter" around
+spread-out PIN code locations inside it (more in Karnataka). That is about
+18,000 searches, plus one details lookup per group found. Ola's free tier is
+100,000 requests a month with no billing needed, and the scraper stops
+itself at 90,000 (`--ola-max`). `--ola-check` makes 6 test calls around
+Udupi and Dakshina Kannada and shows what is found.
 
 1. Sign up at https://maps.olakrutrim.com and create an API key.
 2. Copy the key, then run: `mkdir -p ~/.config/ka-ngo-scraper && pbpaste > ~/.config/ka-ngo-scraper/ola_maps_key`

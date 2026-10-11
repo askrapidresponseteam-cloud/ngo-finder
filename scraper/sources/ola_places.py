@@ -5,22 +5,27 @@ free tier, and its terms allow showing its data alongside your own in an
 app, as long as the app credits "Ola Maps" and says the data is available
 under the Open Database License. The lookup site shows that credit.
 
-A full sweep (every district, taluk town and Bengaluru locality, then
-details for each shelter found) uses roughly 2,000 to 3,000 requests. A
-counter on disk stops at --ola-max requests per calendar month (default
-90,000) and requests are spaced to stay far below Ola's per-minute limits.
+How it searches: Ola's text search does not answer category searches like
+"animal shelter" (tested Oct 2026, zero results everywhere), but its
+autocomplete finds places by name near a location. Animal groups nearly
+always carry the word in their name ("Asare Animal Trust", "Sri Krishna
+Gaushala"), so the sweep asks autocomplete for those words around the
+centre of every district, and around spread-out PIN code locations inside
+it. Each place found is then looked up once for phone and website.
 
-The exact JSON shape is read defensively (Google-style "predictions" or
-"results", "geometry.location", etc). Run `bash run.sh --ola-check` once to
-see a raw response and what was parsed from it.
+All of India is roughly 25,000 to 35,000 requests. A counter on disk stops at
+--ola-max requests per calendar month (default 90,000), and requests are
+spaced to stay far below Ola's per-minute limits.
 """
 
 import os
+import re
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 
 from .. import districts, geo
 from ..enrich import norm_phone
+from ..classify import is_relevant
 from ..models import Org
 from ..text import token_overlap
 from .google_places import Budget, Usage, candidate, query_plan
@@ -41,48 +46,52 @@ NATIONAL_QUERIES = ["animal shelter", "animal rescue", "animal welfare trust", "
 ATTRIBUTION = "Ola Maps (data available under the Open Database License)"
 
 
-RADIUS = 40000  # metres around the district centre each search is biased to
-BENGALURU = ("12.9716", "77.5946")
+# Asked around each district centre.
+CENTRE_TERMS = ["animal trust", "animal shelter", "animal rescue", "animal welfare", "animal care",
+                "dog shelter", "stray", "gaushala", "goshala", "gau seva", "pinjrapole", "spca",
+                "people for animals", "wildlife rescue", "snake rescue", "cow shelter"]
+# Asked around each extra point inside a district.
+POINT_TERMS = ["animal", "gaushala", "rescue", "shelter"]
+CENTRE_RADIUS = 40000  # metres
+POINT_RADIUS = 15000
+PINS_PER_POINT = 10    # one extra point per this many PIN codes in a district...
+MAX_POINTS = 8         # ...up to this many
+KA_PINS_PER_POINT, KA_MAX_POINTS = 6, 20
+PINJRAPOLE = re.compile(r"pinjrapole|panjrapole|pinjarapole|panjarapole|gaushala|goshala|gowshala", re.I)
 
 
 def _loc(state, district):
-    lat, lon = (BENGALURU if (state, district) == ("Karnataka", "Bengaluru Urban") else geo.centre(state, district))
+    lat, lon = geo.centre(state, district)
     return "{},{}".format(lat, lon) if lat and lon else ""
 
 
 def plan(only=None, states=None):
-    """(input, state, district, location) for every search in the sweep.
-
-    Ola Maps text search answers near the location it is given (without one
-    it searches around Bengaluru), so every search carries its district's
-    centre. Karnataka also searches each taluk town and Bengaluru locality.
-    """
+    """(input, state, district, location, radius) for every autocomplete call."""
     out = []
-    if not states or "Karnataka" in states:
-        ka_only = [d for d in (only or []) if d in districts.DISTRICTS] or None
-        if not only or ka_only:
-            targets = [d for d in districts.DISTRICTS if not ka_only or d in ka_only]
-            for d in targets:
-                for q in DISTRICT_QUERIES:
-                    out.append(("{} {}".format(q, d.split(" (")[0]), "Karnataka", d, _loc("Karnataka", d)))
-            for d in targets:
-                for t in districts.TALUK_TOWNS.get(d, []):
-                    for q in TOWN_QUERIES:
-                        out.append(("{} {}".format(q, t), "Karnataka", d, _loc("Karnataka", d)))
-            if not ka_only or "Bengaluru Urban" in ka_only:
-                for area in districts.BENGALURU_LOCALITIES:
-                    for q in LOCALITY_QUERIES:
-                        out.append(("{} {} Bengaluru".format(q, area), "Karnataka", "Bengaluru Urban",
-                                    _loc("Karnataka", "Bengaluru Urban")))
     for st in geo.states():
-        if st == "Karnataka" or (states and st not in states):
+        if states and st not in states:
             continue
         for d in geo.districts_of(st):
             if only and d not in only:
                 continue
-            for q in NATIONAL_QUERIES:
-                out.append(("{} {}".format(q, d), st, d, _loc(st, d)))
+            centre = _loc(st, d)
+            if centre:
+                out += [(t, st, d, centre, CENTRE_RADIUS) for t in CENTRE_TERMS]
+            if st == "Karnataka":
+                k = min(KA_MAX_POINTS, geo.pin_count(st, d) // KA_PINS_PER_POINT)
+            else:
+                k = min(MAX_POINTS, geo.pin_count(st, d) // PINS_PER_POINT)
+            for lat, lon in geo.spread_points(st, d, k):
+                loc = "{},{}".format(lat, lon)
+                out += [(t, st, d, loc, POINT_RADIUS) for t in POINT_TERMS]
     return out
+
+
+def ola_candidate(item):
+    """A listing worth keeping: plausibly an NGO, and animal-related by name."""
+    if not candidate(item["name"], item["address"], item["types"], item["closed"], require_state=False):
+        return False
+    return is_relevant(item["name"]) or bool(PINJRAPOLE.search(item["name"]))
 
 
 class OlaError(Exception):
@@ -147,12 +156,13 @@ def parse_details(data):
             "lat": loc.get("lat", ""), "lng": loc.get("lng", "")}
 
 
-def text_search(http, key, query, usage, location=""):
+def search(http, key, term, usage, location="", radius=CENTRE_RADIUS):
+    """Autocomplete: places whose name matches term, near location."""
     usage.take()
-    params = {"input": query}
+    params = {"input": term}
     if location:
-        params.update(location=location, radius=str(RADIUS))
-    return parse_items(_get(http, "/textsearch", params, key))
+        params.update(location=location, radius=str(radius))
+    return parse_items(_get(http, "/autocomplete", params, key))
 
 
 def details(http, key, place_id, usage):
@@ -169,9 +179,9 @@ def sweep(http, key, cap=90000, only=None, log=print, workers=3, with_details=Tr
     found, info = {}, {"queries": 0, "stopped": "", "errors": 0}
 
     def run(item):
-        q, st, d, loc = item
+        q, st, d, loc, radius = item
         try:
-            return q, st, d, text_search(http, key, q, usage, loc), None
+            return q, st, d, search(http, key, q, usage, loc, radius), None
         except (Budget, PermissionError):
             raise
         except Exception as err:
@@ -183,7 +193,7 @@ def sweep(http, key, cap=90000, only=None, log=print, workers=3, with_details=Tr
                 if err:
                     info["errors"] += 1
                 for it in items:
-                    if not candidate(it["name"], it["address"], it["types"], it["closed"], require_state=False):
+                    if not ola_candidate(it):
                         continue
                     where_st, where_d = geo.locate(it["address"], st)
                     if where_st and where_st != st:
@@ -195,7 +205,7 @@ def sweep(http, key, cap=90000, only=None, log=print, workers=3, with_details=Tr
                         it["query"] = q
                         found[key_] = it
                 info["queries"] = i
-                if i % 100 == 0:
+                if i % 500 == 0:
                     log("  Ola Maps: {}/{} searches, {} shelters found".format(i, len(queries), len(found)))
     except Budget as err:
         info["stopped"] = str(err)
@@ -261,29 +271,37 @@ def to_org(p):
 
 
 CHECKS = [
-    # (what it tests, path, params) using Udupi and Dakshina Kannada, where the shelters are known
-    ("search style the sweep uses", "/textsearch", {"input": "animal shelter Udupi", "radius": "40000"}, "Udupi"),
-    ("search without the place name", "/textsearch", {"input": "animal shelter", "radius": "40000"}, "Udupi"),
-    ("a known shelter by name", "/textsearch", {"input": "Ahimsa Animal Care Trust"}, "Udupi"),
-    ("another known shelter by name", "/textsearch", {"input": "Asare Animal Trust"}, "Dakshina Kannada"),
-    ("old style, no location", "/textsearch", {"input": "animal shelter in Udupi, Karnataka"}, ""),
-    ("autocomplete", "/autocomplete", {"input": "Asare Animal Trust"}, "Dakshina Kannada"),
+    # (what it tests, path, params, where: a district in Karnataka or a PIN code)
+    ("sweep style, district centre", "/autocomplete", {"input": "animal trust", "radius": "40000"}, "Dakshina Kannada"),
+    ("sweep style, near Surathkal", "/autocomplete", {"input": "animal", "radius": "15000"}, "575019"),
+    ("sweep style, near Mudar (Karkala)", "/autocomplete", {"input": "animal", "radius": "15000"}, "574122"),
+    ("sweep style, gaushala in Udupi", "/autocomplete", {"input": "gaushala", "radius": "40000"}, "Udupi"),
+    ("nearby search, animal_shelter type", "/nearbysearch",
+     {"layers": "venue", "types": "animal_shelter", "radius": "40000", "limit": "20"}, "Udupi"),
+    ("details for the first place found", "/details", {}, ""),
 ]
 
 
 def check(http, key, log=print):
-    """A few test searches (6 requests), printed in short, to confirm the key
-    and which search style Ola answers. True if the sweep's style works."""
-    results = []
-    for label, path, params, district in CHECKS:
+    """A few test calls (6 requests), printed in short, to confirm the key and
+    that the sweep's search style finds animal groups. True if it does."""
+    first_id, found = "", 0
+    for n, (label, path, params, where) in enumerate(CHECKS):
         params = dict(params, api_key=key)
-        if district:
-            params["location"] = _loc("Karnataka", district)
+        if where.isdigit():
+            lat, lon = geo.pin_location(where)
+            params["location"] = "{},{}".format(lat, lon)
+        elif where:
+            params["location"] = _loc("Karnataka", where)
+        if path == "/details":
+            if not first_id:
+                log("{}: skipped (nothing found to look up)".format(label))
+                continue
+            params["place_id"] = first_id
         try:
             resp = http.get(BASE + path, params=params, retries=0, headers={"X-Request-Id": str(uuid.uuid4())})
         except Exception as err:
             log("{}: request failed ({})".format(label, err))
-            results.append(0)
             continue
         if resp.status_code in (401, 403):
             log("HTTP {}: Ola Maps rejected the key. {}".format(resp.status_code, resp.text[:300]))
@@ -292,18 +310,22 @@ def check(http, key, log=print):
             body = resp.json()
         except ValueError:
             body = {}
-        items = parse_items(body) if path == "/textsearch" else body.get("predictions") or []
-        results.append(len(items))
-        log("{}: HTTP {}, {} places {}".format(label, resp.status_code, len(items),
-                                              "" if items else "(" + (resp.text[:200] or "empty") + ")"))
-        for it in items[:4]:
-            if path == "/textsearch":
-                keep = candidate(it["name"], it["address"], it["types"], it["closed"], require_state=False)
-                log("    [{}] {} | {}".format("keep" if keep else "skip", it["name"], it["address"][:90]))
-            else:
-                log("    {}".format((it.get("description") or it.get("structured_formatting", {}).get("main_text")
-                                     or "")[:110]))
-    return bool(results and results[0])
+        if path == "/details":
+            d = parse_details(body)
+            log("{}: HTTP {}, {} | phones {} | website {}".format(label, resp.status_code, d["name"] or "(no name)",
+                                                                ", ".join(d["phones"]) or "none", d["website"] or "none"))
+            continue
+        items = parse_items(body)
+        kept = [it for it in items if ola_candidate(it)]
+        if path == "/autocomplete":
+            found += len(kept)
+            if kept and not first_id:
+                first_id = kept[0]["id"]
+        log("{}: HTTP {}, {} places, {} kept {}".format(label, resp.status_code, len(items), len(kept),
+                                                       "" if items else "(" + (resp.text[:160] or "empty") + ")"))
+        for it in items[:5]:
+            log("    [{}] {} | {}".format("keep" if ola_candidate(it) else "skip", it["name"], it["address"][:80]))
+    return found > 0
 
 
 def load_key(explicit=""):

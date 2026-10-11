@@ -179,3 +179,37 @@ def map_grid(step=0.5):
                 add.add((a, b))
         cells |= add
     return [[round(a * step, 2), round(b * step, 2)] for a, b in sorted(cells)]
+
+
+@lru_cache(maxsize=1)
+def _pins_by_district():
+    out = {}
+    for state, district, lat, lon in _tables()[0].values():
+        if lat and lon:
+            out.setdefault((state, district), []).append((float(lat), float(lon)))
+    return out
+
+
+def spread_points(state, district, k):
+    """Up to k PIN code locations in a district, spread out (farthest point first)."""
+    pts = sorted(set(_pins_by_district().get((state, district), [])))
+    if not pts or k <= 0:
+        return []
+    clat, clon = centre(state, district)
+    chosen = []
+    seed = (float(clat), float(clon)) if clat and clon else pts[0]
+    dist = [(p[0] - seed[0]) ** 2 + (p[1] - seed[1]) ** 2 for p in pts]
+    while len(chosen) < min(k, len(pts)):
+        i = max(range(len(pts)), key=lambda j: dist[j])
+        chosen.append(pts[i])
+        dist = [min(dist[j], (pts[j][0] - pts[i][0]) ** 2 + (pts[j][1] - pts[i][1]) ** 2) for j in range(len(pts))]
+    return chosen
+
+
+def pin_count(state, district):
+    return len(_pins_by_district().get((state, district), []))
+
+
+def pin_location(pin):
+    hit = _tables()[0].get(str(pin))
+    return (hit[2], hit[3]) if hit and hit[2] else ("", "")

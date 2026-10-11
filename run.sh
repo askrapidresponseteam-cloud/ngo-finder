@@ -1,7 +1,7 @@
 #!/bin/bash
 # Animal welfare and wildlife NGO scraper for India.
 # Usage: bash run.sh               (full run)
-#        bash run.sh --ola-check   (test your Ola Maps key with one search)
+#        bash run.sh --ola-check   (enter or keep your Ola Maps key, then 6 test calls)
 #        bash run.sh --quick       (official lists + map data only, a few minutes)
 #        bash run.sh --states Karnataka,Kerala   (only these states)
 set -e
@@ -52,7 +52,28 @@ if ! ./.venv/bin/python -m unittest discover -s tests -q; then
   exit 1
 fi
 
-# A key check only makes one request; keep existing outputs.
+# Ola Maps key: asked here (typing is hidden) and saved privately on this Mac.
+# Asked on --ola-check, or whenever no key is saved yet. Press Enter to keep the saved one.
+KEY_FILE="$HOME/.config/ka-ngo-scraper/ola_maps_key"
+if [[ " $* " == *" --ola-check "* ]] || { [ ! -s "$KEY_FILE" ] && [ -z "$OLA_MAPS_API_KEY" ]; }; then
+  if [ -s "$KEY_FILE" ]; then
+    printf "Ola Maps key (press Enter to keep the saved one): "
+  else
+    printf "Paste your Ola Maps key and press Enter (or just Enter to skip Ola): "
+  fi
+  read -rs NEW_KEY || NEW_KEY=""
+  echo ""
+  NEW_KEY="$(printf '%s' "$NEW_KEY" | tr -d '[:space:]')"
+  if [ -n "$NEW_KEY" ]; then
+    mkdir -p "$(dirname "$KEY_FILE")"
+    ( umask 077 && printf '%s\n' "$NEW_KEY" > "$KEY_FILE" )
+    chmod 600 "$KEY_FILE"
+    echo "Key saved."
+  fi
+  unset NEW_KEY
+fi
+
+# A key check only makes a few requests; keep existing outputs.
 if [[ " $* " == *" --ola-check "* ]]; then
   ./.venv/bin/python -m scraper --ola-check
   exit $?
