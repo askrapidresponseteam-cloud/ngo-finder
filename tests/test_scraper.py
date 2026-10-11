@@ -7,6 +7,11 @@ import sys
 import tempfile
 import unittest
 
+# Never touch the real key files, monthly counters or search cache of whoever runs the tests.
+os.environ["HOME"] = tempfile.mkdtemp(prefix="ngo-tests-")
+for _k in ("OLA_MAPS_API_KEY", "GOOGLE_MAPS_API_KEY"):
+    os.environ.pop(_k, None)
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 FIX = os.path.join(ROOT, "tests", "fixtures")
@@ -44,6 +49,7 @@ class FakeHttp:
     def __init__(self, routes):
         self.routes = routes
         self.calls = []
+        self.params = []
 
     def _find(self, url):
         self.calls.append(url)
@@ -53,6 +59,7 @@ class FakeHttp:
         return FakeResponse("not found", 404, url=url)
 
     def get(self, url, **kw):
+        self.params.append(kw.get("params") or {})
         return self._find(url)
 
     def post(self, url, **kw):
@@ -519,11 +526,29 @@ class TestOla(unittest.TestCase):
         self.assertEqual(asare.phones, ["+91 79751 24932"])
         self.assertEqual(asare.sources, ["Ola Maps"])
 
+    def test_every_search_is_biased_to_its_district(self):
+        http = self.http()
+        self.ola.sweep(http, "KEY", cap=50, only=["Hassan"], log=lambda m: None, workers=1, with_details=False)
+        searches = [p for u, p in zip(http.calls, http.params) if "/textsearch" in u]
+        self.assertTrue(searches)
+        lat, lon = __import__("scraper.geo", fromlist=["x"]).centre("Karnataka", "Hassan")
+        for p in searches:
+            self.assertEqual(p["location"], "{},{}".format(lat, lon))
+            self.assertEqual(p["radius"], "40000")
+        self.assertEqual(searches[0]["input"], "animal shelter Hassan")
+        self.assertIn("animal shelter Arsikere", [p["input"] for p in searches])
+
     def test_sweep_stops_at_monthly_cap(self):
         http = self.http()
         orgs, info = self.ola.sweep(http, "KEY", cap=4, only=["Hassan"], log=lambda m: None, workers=1)
         self.assertEqual(len(http.calls), 4)
         self.assertIn("monthly cap", info["stopped"])
+
+    def test_check_reports_bad_key(self):
+        http = FakeHttp({"/textsearch": FakeResponse('{"message":"invalid api key"}', 401)})
+        out = []
+        self.assertFalse(self.ola.check(http, "BAD", log=out.append))
+        self.assertTrue(any("rejected the key" in line for line in out))
 
     def test_bad_key_is_reported(self):
         http = FakeHttp({"/textsearch": FakeResponse('{"message":"invalid api key"}', 401)})
@@ -532,7 +557,10 @@ class TestOla(unittest.TestCase):
 
     def test_check_command(self):
         out = []
-        self.assertTrue(self.ola.check(self.http(), "KEY", log=out.append))
+        http = self.http()
+        self.assertTrue(self.ola.check(http, "KEY", log=out.append))
+        self.assertEqual(len(http.calls), len(self.ola.CHECKS))
+        self.assertTrue(http.params[0]["location"])
         self.assertTrue(any("[keep] Asare Animal Trust" in line for line in out))
         self.assertTrue(any("[skip] Happy Tails Pet Clinic" in line for line in out))
 
@@ -794,11 +822,13 @@ class TestNationwide(unittest.TestCase):
     def test_ola_plan_all_india_and_one_state(self):
         from scraper.sources import ola_places
         allp = ola_places.plan()
-        self.assertEqual({st for _, st, _ in allp}, set(__import__("scraper.geo", fromlist=["x"]).states()))
+        self.assertEqual({st for _, st, _, _ in allp}, set(__import__("scraper.geo", fromlist=["x"]).states()))
+        self.assertTrue(all(loc for _, _, _, loc in allp), "every search needs a location")
         ka = ola_places.plan(states=["Karnataka"])
-        self.assertTrue(ka and all(st == "Karnataka" for _, st, _ in ka))
+        self.assertTrue(ka and all(st == "Karnataka" for _, st, _, _ in ka))
         goa = ola_places.plan(states=["Goa"])
-        self.assertEqual({d for _, _, d in goa}, {"North Goa", "South Goa"})
+        self.assertEqual({d for _, _, d, _ in goa}, {"North Goa", "South Goa"})
+        self.assertIn(("animal shelter North Goa", "Goa", "North Goa"), [x[:3] for x in goa])
 
     def test_site_payload_has_states_and_map(self):
         orgs = [Org(name="Goa Animal Welfare Trust", source="test", state="Goa", district="North Goa", sources=["AWBI"],

@@ -41,15 +41,39 @@ NATIONAL_QUERIES = ["animal shelter", "animal rescue", "animal welfare trust", "
 ATTRIBUTION = "Ola Maps (data available under the Open Database License)"
 
 
+RADIUS = 40000  # metres around the district centre each search is biased to
+BENGALURU = ("12.9716", "77.5946")
+
+
+def _loc(state, district):
+    lat, lon = (BENGALURU if (state, district) == ("Karnataka", "Bengaluru Urban") else geo.centre(state, district))
+    return "{},{}".format(lat, lon) if lat and lon else ""
+
+
 def plan(only=None, states=None):
-    """(query, state, district) for the sweep. Karnataka gets the deeper
-    taluk-level plan; every other district in India gets NATIONAL_QUERIES."""
+    """(input, state, district, location) for every search in the sweep.
+
+    Ola Maps text search answers near the location it is given (without one
+    it searches around Bengaluru), so every search carries its district's
+    centre. Karnataka also searches each taluk town and Bengaluru locality.
+    """
     out = []
     if not states or "Karnataka" in states:
         ka_only = [d for d in (only or []) if d in districts.DISTRICTS] or None
         if not only or ka_only:
-            out += [(q, "Karnataka", d) for q, d in query_plan(ka_only, DISTRICT_QUERIES, TOWN_QUERIES,
-                                                                 LOCALITY_QUERIES)]
+            targets = [d for d in districts.DISTRICTS if not ka_only or d in ka_only]
+            for d in targets:
+                for q in DISTRICT_QUERIES:
+                    out.append(("{} {}".format(q, d.split(" (")[0]), "Karnataka", d, _loc("Karnataka", d)))
+            for d in targets:
+                for t in districts.TALUK_TOWNS.get(d, []):
+                    for q in TOWN_QUERIES:
+                        out.append(("{} {}".format(q, t), "Karnataka", d, _loc("Karnataka", d)))
+            if not ka_only or "Bengaluru Urban" in ka_only:
+                for area in districts.BENGALURU_LOCALITIES:
+                    for q in LOCALITY_QUERIES:
+                        out.append(("{} {} Bengaluru".format(q, area), "Karnataka", "Bengaluru Urban",
+                                    _loc("Karnataka", "Bengaluru Urban")))
     for st in geo.states():
         if st == "Karnataka" or (states and st not in states):
             continue
@@ -57,7 +81,7 @@ def plan(only=None, states=None):
             if only and d not in only:
                 continue
             for q in NATIONAL_QUERIES:
-                out.append(("{} in {} district, {}".format(q, d, st), st, d))
+                out.append(("{} {}".format(q, d), st, d, _loc(st, d)))
     return out
 
 
@@ -123,9 +147,12 @@ def parse_details(data):
             "lat": loc.get("lat", ""), "lng": loc.get("lng", "")}
 
 
-def text_search(http, key, query, usage):
+def text_search(http, key, query, usage, location=""):
     usage.take()
-    return parse_items(_get(http, "/textsearch", {"input": query}, key))
+    params = {"input": query}
+    if location:
+        params.update(location=location, radius=str(RADIUS))
+    return parse_items(_get(http, "/textsearch", params, key))
 
 
 def details(http, key, place_id, usage):
@@ -142,9 +169,9 @@ def sweep(http, key, cap=90000, only=None, log=print, workers=3, with_details=Tr
     found, info = {}, {"queries": 0, "stopped": "", "errors": 0}
 
     def run(item):
-        q, st, d = item
+        q, st, d, loc = item
         try:
-            return q, st, d, text_search(http, key, q, usage), None
+            return q, st, d, text_search(http, key, q, usage, loc), None
         except (Budget, PermissionError):
             raise
         except Exception as err:
@@ -233,24 +260,50 @@ def to_org(p):
     )
 
 
-def check(http, key, query="animal shelter in Udupi, Karnataka", log=print):
-    """One search, printed raw, to confirm the key and the response format."""
-    import json
-    resp = http.get(BASE + "/textsearch", params={"input": query, "api_key": key}, retries=0,
-                    headers={"X-Request-Id": str(uuid.uuid4())})
-    log("HTTP {}".format(resp.status_code))
-    log(resp.text[:1500])
-    try:
-        items = parse_items(resp.json())
-    except ValueError:
-        items = []
-    log("")
-    log("Parsed {} places:".format(len(items)))
-    for it in items[:10]:
-        keep = candidate(it["name"], it["address"], it["types"], it["closed"], require_state=False)
-        log("  [{}] {} | {} | {},{}".format("keep" if keep else "skip", it["name"], it["address"],
-                                           it["lat"], it["lng"]))
-    return resp.status_code == 200 and bool(items)
+CHECKS = [
+    # (what it tests, path, params) using Udupi and Dakshina Kannada, where the shelters are known
+    ("search style the sweep uses", "/textsearch", {"input": "animal shelter Udupi", "radius": "40000"}, "Udupi"),
+    ("search without the place name", "/textsearch", {"input": "animal shelter", "radius": "40000"}, "Udupi"),
+    ("a known shelter by name", "/textsearch", {"input": "Ahimsa Animal Care Trust"}, "Udupi"),
+    ("another known shelter by name", "/textsearch", {"input": "Asare Animal Trust"}, "Dakshina Kannada"),
+    ("old style, no location", "/textsearch", {"input": "animal shelter in Udupi, Karnataka"}, ""),
+    ("autocomplete", "/autocomplete", {"input": "Asare Animal Trust"}, "Dakshina Kannada"),
+]
+
+
+def check(http, key, log=print):
+    """A few test searches (6 requests), printed in short, to confirm the key
+    and which search style Ola answers. True if the sweep's style works."""
+    results = []
+    for label, path, params, district in CHECKS:
+        params = dict(params, api_key=key)
+        if district:
+            params["location"] = _loc("Karnataka", district)
+        try:
+            resp = http.get(BASE + path, params=params, retries=0, headers={"X-Request-Id": str(uuid.uuid4())})
+        except Exception as err:
+            log("{}: request failed ({})".format(label, err))
+            results.append(0)
+            continue
+        if resp.status_code in (401, 403):
+            log("HTTP {}: Ola Maps rejected the key. {}".format(resp.status_code, resp.text[:300]))
+            return False
+        try:
+            body = resp.json()
+        except ValueError:
+            body = {}
+        items = parse_items(body) if path == "/textsearch" else body.get("predictions") or []
+        results.append(len(items))
+        log("{}: HTTP {}, {} places {}".format(label, resp.status_code, len(items),
+                                              "" if items else "(" + (resp.text[:200] or "empty") + ")"))
+        for it in items[:4]:
+            if path == "/textsearch":
+                keep = candidate(it["name"], it["address"], it["types"], it["closed"], require_state=False)
+                log("    [{}] {} | {}".format("keep" if keep else "skip", it["name"], it["address"][:90]))
+            else:
+                log("    {}".format((it.get("description") or it.get("structured_formatting", {}).get("main_text")
+                                     or "")[:110]))
+    return bool(results and results[0])
 
 
 def load_key(explicit=""):

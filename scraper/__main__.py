@@ -81,7 +81,8 @@ def main(argv=None):
             return 1
         ok = ola_places.check(Http(delay=0.5), key, log=print)
         print("")
-        print("Ola Maps is working." if ok else "Ola Maps did not return usable places; send me the output above.")
+        print("Ola Maps is working: the sweep's search style returns places." if ok else
+              "The sweep's search style returned nothing. Send me the lines above.")
         return 0 if ok else 1
     if args.quick:
         args.no_web = args.no_enrich = args.no_find_websites = args.no_people = True

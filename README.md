@@ -67,7 +67,9 @@ bash run.sh && bash deploy.sh
 Most small shelters and rescue trusts only exist as map listings. The scraper
 searches Ola Maps in every district of India (about 5,600 searches; Karnataka
 also by taluk town and Bengaluru locality), plus one details lookup per
-shelter found. Ola's free tier is 100,000 requests a month with no billing
+shelter found. Each search is centred on its district (Ola searches around
+Bengaluru when no location is given). `--ola-check` makes 6 test searches
+and shows which search styles return places. Ola's free tier is 100,000 requests a month with no billing
 needed, and the scraper stops itself at 90,000 (`--ola-max`).
 
 1. Sign up at https://maps.olakrutrim.com and create an API key.
