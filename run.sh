@@ -12,8 +12,36 @@ if ! command -v python3 >/dev/null 2>&1; then
   exit 1
 fi
 
-echo "Setting up (first run takes a minute)..."
-python3 -m venv .venv
+# Private Python environment for the scraper, in .venv. Some Python installs
+# (for example a Homebrew Python 3.13) fail at "ensurepip" while creating it,
+# so fall back to macOS's own Python, then to installing pip directly.
+make_venv() {
+  rm -rf .venv
+  if python3 -m venv .venv >/dev/null 2>&1 && ./.venv/bin/python -m pip --version >/dev/null 2>&1; then
+    return 0
+  fi
+  if [ -x /usr/bin/python3 ]; then
+    echo "  default python3 could not set up; trying the macOS Python..."
+    rm -rf .venv
+    if /usr/bin/python3 -m venv .venv >/dev/null 2>&1 && ./.venv/bin/python -m pip --version >/dev/null 2>&1; then
+      return 0
+    fi
+  fi
+  echo "  installing pip directly..."
+  rm -rf .venv
+  python3 -m venv --without-pip .venv &&
+    curl -fsSL https://bootstrap.pypa.io/get-pip.py -o .venv/get-pip.py &&
+    ./.venv/bin/python .venv/get-pip.py -q &&
+    ./.venv/bin/python -m pip --version >/dev/null 2>&1
+}
+
+if ! ./.venv/bin/python -m pip --version >/dev/null 2>&1; then
+  echo "Setting up (first run takes a minute)..."
+  if ! make_venv; then
+    echo "Could not set up Python. Run: xcode-select --install   then try again."
+    exit 1
+  fi
+fi
 ./.venv/bin/python -m pip install -q --upgrade pip >/dev/null 2>&1 || true
 ./.venv/bin/python -m pip install -q -r requirements.txt
 
