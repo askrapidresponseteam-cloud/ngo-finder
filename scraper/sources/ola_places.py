@@ -57,6 +57,15 @@ POINT_RADIUS = 15000
 PINS_PER_POINT = 10    # one extra point per this many PIN codes in a district...
 MAX_POINTS = 8         # ...up to this many
 KA_PINS_PER_POINT, KA_MAX_POINTS = 6, 20
+# Places named after a gaushala or shelter that are not one: stations, roads, gates, localities.
+NOT_A_GROUP = re.compile(
+    r"\bstation\b|\bmetro\b|railway|bus ?(stop|stand|depot)|\bphatak\b|\bmarg\b|\broad\b|\brd\b|"
+    r"\bstreet\b|\blane\b|\bgali\b|\bchowk\b|\bchauraha\b|\bgate\b|\bcolony\b|\bnagar\b|\bhalt\b|"
+    r"junction|\bcircle\b|\bbridge\b|flyover|\bpost office\b|\bpetrol\b|\batm\b|\bbank\b|"
+    r"\bschool\b|\bcollege\b|apartment|\bpg\b|hostel|\bhotel\b|restaurant|\bdhaba\b|"
+    r"\bmandir\b|\btemple\b|\bmasjid\b|\bchurch\b|\bpark\b|\bmarket\b|\bbazaar\b|\bshop\b|"
+    r"\bstore\b|\bmart\b|\btraders\b|\benterprises\b", re.I)
+EMPTY = {"", "na", "n/a", "none", "null", "-", "nil", "0"}
 PINJRAPOLE = re.compile(r"pinjrapole|panjrapole|pinjarapole|panjarapole|gaushala|goshala|gowshala", re.I)
 
 
@@ -90,6 +99,8 @@ def plan(only=None, states=None):
 def ola_candidate(item):
     """A listing worth keeping: plausibly an NGO, and animal-related by name."""
     if not candidate(item["name"], item["address"], item["types"], item["closed"], require_state=False):
+        return False
+    if NOT_A_GROUP.search(item["name"]):
         return False
     return is_relevant(item["name"]) or bool(PINJRAPOLE.search(item["name"]))
 
@@ -146,22 +157,43 @@ def parse_details(data):
     r = data.get("result") or data.get("place") or {}
     phones = []
     for k in ("formatted_phone_number", "international_phone_number", "phone", "phone_number"):
-        if r.get(k):
+        if r.get(k) and str(r[k]).strip().lower() not in EMPTY:
             n = norm_phone(str(r[k])) or str(r[k]).strip()
             if n and n not in phones:
                 phones.append(n)
     loc = (r.get("geometry") or {}).get("location") or {}
-    return {"name": (r.get("name") or "").strip(), "phones": phones, "website": (r.get("website") or "").strip(),
+    site = (r.get("website") or "").strip()
+    if site.lower() in EMPTY or " " in site or "." not in site:
+        site = ""
+    elif not site.lower().startswith(("http://", "https://")):
+        site = "https://" + site
+    return {"name": (r.get("name") or "").strip(), "phones": phones, "website": site,
             "address": (r.get("formatted_address") or "").strip(),
             "lat": loc.get("lat", ""), "lng": loc.get("lng", "")}
 
 
+STRICT = {"on": True}  # keep results inside the radius; switched off if Ola rejects the option
+
+
 def search(http, key, term, usage, location="", radius=CENTRE_RADIUS):
-    """Autocomplete: places whose name matches term, near location."""
+    """Autocomplete: places whose name matches term, near location.
+
+    Ola treats location as a hint and returns matches from anywhere in India,
+    so strictbounds keeps them inside the radius. If Ola answers 400 to that
+    option, the search is repeated without it and it stays off for the run.
+    """
     usage.take()
     params = {"input": term}
     if location:
         params.update(location=location, radius=str(radius))
+        if STRICT["on"]:
+            try:
+                return parse_items(_get(http, "/autocomplete", dict(params, strictbounds="true"), key))
+            except OlaError as err:
+                if "400" not in str(err):
+                    raise
+                STRICT["on"] = False
+                usage.take()
     return parse_items(_get(http, "/autocomplete", params, key))
 
 
@@ -272,12 +304,15 @@ def to_org(p):
 
 CHECKS = [
     # (what it tests, path, params, where: a district in Karnataka or a PIN code)
-    ("sweep style, district centre", "/autocomplete", {"input": "animal trust", "radius": "40000"}, "Dakshina Kannada"),
-    ("sweep style, near Surathkal", "/autocomplete", {"input": "animal", "radius": "15000"}, "575019"),
-    ("sweep style, near Mudar (Karkala)", "/autocomplete", {"input": "animal", "radius": "15000"}, "574122"),
-    ("sweep style, gaushala in Udupi", "/autocomplete", {"input": "gaushala", "radius": "40000"}, "Udupi"),
-    ("nearby search, animal_shelter type", "/nearbysearch",
-     {"layers": "venue", "types": "animal_shelter", "radius": "40000", "limit": "20"}, "Udupi"),
+    ("sweep style, Dakshina Kannada", "/autocomplete",
+     {"input": "animal trust", "radius": "40000", "strictbounds": "true"}, "Dakshina Kannada"),
+    ("sweep style, near Surathkal", "/autocomplete",
+     {"input": "animal", "radius": "15000", "strictbounds": "true"}, "575019"),
+    ("sweep style, near Mudar (Karkala)", "/autocomplete",
+     {"input": "animal", "radius": "15000", "strictbounds": "true"}, "574122"),
+    ("sweep style, gaushala in Udupi", "/autocomplete",
+     {"input": "gaushala", "radius": "40000", "strictbounds": "true"}, "Udupi"),
+    ("same without strictbounds", "/autocomplete", {"input": "gaushala", "radius": "40000"}, "Udupi"),
     ("details for the first place found", "/details", {}, ""),
 ]
 
@@ -317,7 +352,7 @@ def check(http, key, log=print):
             continue
         items = parse_items(body)
         kept = [it for it in items if ola_candidate(it)]
-        if path == "/autocomplete":
+        if path == "/autocomplete" and params.get("strictbounds"):
             found += len(kept)
             if kept and not first_id:
                 first_id = kept[0]["id"]
