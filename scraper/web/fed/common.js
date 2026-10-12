@@ -29,7 +29,7 @@ export function gidOf(o) {
 
 // Payment details and fundraising asks. Mirrors hasMoney() in firestore.rules,
 // so people get a clear message before the server refuses.
-const MONEY = new RegExp("(" + String.fromCharCode(0x20b9) + "|\\brs\\.? ?[0-9]|\\binr\\b|rupee|\\bupi\\b|@ok(axis|hdfc|icici|sbi)|@ybl|@paytm|paytm|g ?pay|google ?pay|phone ?pe|bhim|\\bbank\\b|account ?(no|number)|\\ba/c\\b|ifsc|\\bcash\\b|money|\\bfunds?\\b|fund ?rais|crowd ?fund|qr ?code|wallet|donat(e|ion)s? (of|in) (money|cash))", "is");
+const MONEY = new RegExp("(" + String.fromCharCode(0x20b9) + "|\\brs\\.? ?[0-9]|[0-9] ?/-|\\binr\\b|rupee|\\bu\\.? ?p\\.? ?i\\b|@(ok[a-z]+|ybl|ibl|axl|apl|paytm|upi)\\b|paytm|g-? ?pay|google ?pay|phone-? ?pe|amazon ?pay|paypal|razorpay|milaap|ketto|bhim|\\bneft\\b|\\bimps\\b|cheque|bank ?(account|details|transfer|a/?c)|acc?t\\.? ?(no|number)|account ?(no|number)|\\ba/c\\b|ifsc|\\bcash\\b|money|\\bfunds?\\b|fund ?rais|crowd ?fund|qr ?code|wallet|sponsor|donat(e|ion)s? (of|in) (money|cash))", "is");
 export function moneyIn(...texts) {
   for (const t of texts) {
     const m = String(t || "").match(MONEY);

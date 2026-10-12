@@ -178,7 +178,7 @@ async function form(body, kind, o, existing) {
         phone: phone.value.trim(), officialEmail: officialEmail.value.trim().toLowerCase(), website: website.value.trim(),
         voucherEmail: voucher.value.trim().toLowerCase(), proofs: ids, driveLink: drive.value.trim(), town: town.value.trim()
       };
-      if (existing) await B.updateMine(existing.id, data);
+      if (existing) await B.updateMine(existing, data);
       else {
         const gid = kind === "claim" ? o._id : gidOf({ n: name.value.trim(), d: di.value, st: st.value });
         await B.apply(Object.assign(data, {
@@ -345,12 +345,14 @@ function vouchItem(a) {
   const note = el("textarea", { rows: "2", maxlength: "1000", placeholder: "How you know them, what you have seen." });
   const acts = el("div", { cls: "row-actions" });
   const done = (msg) => { clear(acts).appendChild(el("span", { cls: "muted", text: msg })); };
+  const c = roles.coordinator;
+  const role = c && c.state === a.state && (c.district === "*" || c.district === a.district) ? "coordinator" : "member";
   if (!a.vouch || a.vouch.by !== user.uid) {
     acts.appendChild(el("button", { cls: "pill blue", type: "button", text: "I know them: vouch", on: { click: async () => {
       if (!note.value.trim()) return toast("Add a line on how you know them.");
-      try { await B.vouch(a, true, note.value.trim()); done("Vouched. Thank you."); } catch (e) { toast(errText(e)); } } } }));
+      try { await B.vouch(a, true, note.value.trim(), role); done("Vouched. Thank you."); } catch (e) { toast(errText(e)); } } } }));
     acts.appendChild(el("button", { cls: "pill", type: "button", text: "I can't vouch", on: { click: async () => {
-      try { await B.vouch(a, false, note.value.trim()); done("Recorded."); } catch (e) { toast(errText(e)); } } } }));
+      try { await B.vouch(a, false, note.value.trim(), role); done("Recorded."); } catch (e) { toast(errText(e)); } } } }));
   } else acts.appendChild(el("span", { cls: "muted", text: a.vouch.ok ? "You vouched." : "You could not vouch." }));
   const visitBox = el("div");
   if (roles.coordinator && a.status === "visit_required" && !(a.visit && a.visit.ok)) {

@@ -27,9 +27,6 @@ export async function backend() {
 
 function now() { return fb.serverTimestamp(); }
 function snapList(s) { return s.docs.map((d) => Object.assign({ id: d.id }, d.data())); }
-async function exists(path) {
-  try { return (await fb.getDoc(fb.doc(db, path))).exists(); } catch (e) { return false; }
-}
 
 const api = {
   // ------------------------------------------------------------ auth
@@ -69,7 +66,7 @@ const api = {
   async apply(data) {
     const u = auth.currentUser;
     const rec = Object.assign({}, data, {
-      uid: u.uid, email: (u.email || "").toLowerCase(), status: "submitted", createdAt: now(), updatedAt: now()
+      uid: u.uid, email: (u.email || "").toLowerCase(), status: "submitted", rev: 0, createdAt: now(), updatedAt: now()
     });
     const ref = await fb.addDoc(fb.collection(db, "applications"), rec);
     return ref.id;
@@ -78,8 +75,11 @@ const api = {
     const u = auth.currentUser;
     return snapList(await fb.getDocs(fb.query(fb.collection(db, "applications"), fb.where("uid", "==", u.uid))));
   },
-  async updateMine(id, patch) {
-    await fb.updateDoc(fb.doc(db, "applications/" + id), Object.assign({}, patch, { status: "submitted", updatedAt: now() }));
+  // Any change goes back to "submitted" and the documents get checked again.
+  async updateMine(app, patch) {
+    await fb.updateDoc(fb.doc(db, "applications/" + app.id), Object.assign({}, patch, {
+      status: "submitted", docsOk: false, rev: (app.rev || 0) + 1, updatedAt: now()
+    }));
   },
   async forCoordinator(c) {
     const q = c.district === "*"
@@ -95,69 +95,74 @@ const api = {
     return snapList(await fb.getDocs(fb.query(fb.collection(db, "applications"), fb.orderBy("createdAt", "desc"), fb.limit(500))));
   },
 
-  // Each review step writes its audit entry in the same batch (the rules check it).
-  async _audit(batch, id, action, target, note) {
-    if (await exists("audit/" + id)) return;
-    const u = auth.currentUser;
-    batch.set(fb.doc(db, "audit/" + id), { by: u.uid, email: (u.email || "").toLowerCase(), action, target, note: note || "", at: now() });
+  // Each review step bumps the application's revision and writes its own audit
+  // entry, named <step>_<application>_<revision>_<reviewer>, in the same batch.
+  _step(b, app, action, patch, note) {
+    const u = auth.currentUser, rev = (app.rev || 0) + 1;
+    b.update(fb.doc(db, "applications/" + app.id), Object.assign({ updatedAt: now(), rev }, patch));
+    b.set(fb.doc(db, "audit/" + action + "_" + app.id + "_" + rev + "_" + u.uid),
+      { by: u.uid, email: (u.email || "").toLowerCase(), action, target: app.id, note: (note || "").slice(0, 1900), at: now() });
   },
-  async vouch(app, ok, note) {
+  // role: "coordinator" (for that place) or "member" (of a verified group named by the applicant)
+  async vouch(app, ok, note, role) {
     const u = auth.currentUser, b = fb.writeBatch(db);
-    b.update(fb.doc(db, "applications/" + app.id), {
-      vouch: { ok: !!ok, by: u.uid, email: (u.email || "").toLowerCase(), note: note || "", at: now() }, updatedAt: now()
-    });
-    await this._audit(b, "vouch_" + app.id + "_" + u.uid, "vouch", app.id, (ok ? "vouched: " : "could not vouch: ") + (note || ""));
+    this._step(b, app, "vouch", { vouch: { ok: !!ok, by: u.uid, email: (u.email || "").toLowerCase(), note: note || "", at: now(), role } },
+      (ok ? "vouched: " : "could not vouch: ") + (note || ""));
     await b.commit();
   },
   async visit(app, ok, how, note) {
     const u = auth.currentUser, b = fb.writeBatch(db);
-    b.update(fb.doc(db, "applications/" + app.id), {
-      visit: { ok: !!ok, by: u.uid, email: (u.email || "").toLowerCase(), note: note || "", how, at: now() }, updatedAt: now()
-    });
-    await this._audit(b, "visit_" + app.id + "_" + u.uid, "visit", app.id, how + (ok ? " ok: " : " not ok: ") + (note || ""));
+    this._step(b, app, "visit", { visit: { ok: !!ok, by: u.uid, email: (u.email || "").toLowerCase(), note: note || "", how, at: now() } },
+      how + (ok ? " passed: " : " not passed: ") + (note || ""));
     await b.commit();
   },
   // status: docs_ok | info_needed | visit_required | rejected | submitted
   async decide(app, patch) {
-    const u = auth.currentUser, b = fb.writeBatch(db);
-    b.update(fb.doc(db, "applications/" + app.id), Object.assign({ updatedAt: now(), reviewedBy: u.uid }, patch));
-    await this._audit(b, "decide_" + app.id + "_" + patch.status + "_" + u.uid, "decide", app.id, patch.status + ": " + (patch.decision || patch.docsNote || ""));
+    const b = fb.writeBatch(db);
+    this._step(b, app, "decide", Object.assign({ reviewedBy: auth.currentUser.uid }, patch), patch.status + ": " + (patch.decision || patch.docsNote || ""));
     await b.commit();
   },
   async verify(app) {
     const u = auth.currentUser, b = fb.writeBatch(db);
-    b.update(fb.doc(db, "applications/" + app.id), {
-      status: "verified", docsOk: true, needsVisit: !!app.needsVisit, updatedAt: now(), reviewedBy: u.uid
-    });
-    await this._audit(b, "decide_" + app.id + "_verified_" + u.uid, "decide", app.id, "verified");
+    this._step(b, app, "decide", { status: "verified", docsOk: true, needsVisit: !!app.needsVisit, reviewedBy: u.uid }, "verified");
     b.set(fb.doc(db, "profiles/" + app.gid), {
       appId: app.id, name: app.name, state: app.state, district: app.district, town: app.town || "",
       about: app.about || "", hours: "", phones: app.phone ? [app.phone] : [], emails: app.officialEmail ? [app.officialEmail] : [],
-      website: app.website || "", services: [], species: [], members: [app.uid], regType: app.regType, regNumber: app.regNumber,
+      website: app.website || "", members: [app.uid], regType: app.regType, regNumber: app.regNumber,
       capacity: { intake: "open", note: "" }, verifiedAt: now(), updatedAt: now()
     });
     b.set(fb.doc(db, "members/" + app.uid), { gid: app.gid, email: app.email, appId: app.id, at: now() });
-    b.set(fb.doc(db, "public/index"), { verified: { [app.gid]: { n: app.name, st: app.state, d: app.district } } }, { merge: true });
+    b.set(fb.doc(db, "public/index"), { verified: { [app.gid]: { n: app.name, st: app.state, d: app.district } }, last: app.gid }, { merge: true });
     await b.commit();
   },
 
   // Take a verified group off the public list (after a report, for example).
   async suspend(app, reason) {
     const u = auth.currentUser, b = fb.writeBatch(db);
-    b.update(fb.doc(db, "applications/" + app.id), { status: "suspended", decision: reason, updatedAt: now(), reviewedBy: u.uid });
-    await this._audit(b, "decide_" + app.id + "_suspended_" + u.uid, "decide", app.id, "suspended: " + reason);
+    this._step(b, app, "decide", { status: "suspended", decision: reason, reviewedBy: u.uid }, "suspended: " + reason);
     b.delete(fb.doc(db, "profiles/" + app.gid));
     b.delete(fb.doc(db, "members/" + app.uid));
-    b.update(fb.doc(db, "public/index"), { ["verified." + app.gid]: fb.deleteField() });
+    b.update(fb.doc(db, "public/index"), { ["verified." + app.gid]: fb.deleteField(), last: app.gid });
+    // Their open needs come down too.
+    for (const n of await this.needsFor(app.gid)) {
+      if (n.status === "open") b.update(fb.doc(db, "needs/" + n.id), { status: "removed" });
+    }
     await b.commit();
   },
 
   // ------------------------------------------------------------ proofs
+  // Proof ids are <uid>_0 to <uid>_29 (the rules allow no more per person).
   async addProof(dataUrl, name, state, district) {
     const u = auth.currentUser;
     const type = dataUrl.slice(5, dataUrl.indexOf(";"));
-    const ref = await fb.addDoc(fb.collection(db, "proofs"), { uid: u.uid, name, type, data: dataUrl, state, district, createdAt: now() });
-    return ref.id;
+    const mine = await fb.getDocs(fb.query(fb.collection(db, "proofs"), fb.where("uid", "==", u.uid)));
+    const used = new Set(mine.docs.map((d) => d.id));
+    let n = 0;
+    while (used.has(u.uid + "_" + n)) n++;
+    if (n >= 30) throw new Error("You have sent the maximum number of documents. Share a Drive folder instead.");
+    const id = u.uid + "_" + n;
+    await fb.setDoc(fb.doc(db, "proofs/" + id), { uid: u.uid, name, type, data: dataUrl, state, district, createdAt: now() });
+    return id;
   },
   async proof(id) {
     const s = await fb.getDoc(fb.doc(db, "proofs/" + id));
@@ -213,13 +218,13 @@ const api = {
   async setCoordinator(email, state, district, name) {
     const b = fb.writeBatch(db), u = auth.currentUser;
     b.set(fb.doc(db, "coordinators/" + email.toLowerCase()), { state, district, name: name || "", by: u.uid, at: now() });
-    b.set(fb.doc(fb.collection(db, "audit")), { by: u.uid, email: (u.email || "").toLowerCase(), action: "coordinator", target: email, note: state + " / " + district, at: now() });
+    b.set(fb.doc(db, "audit/coordinator_" + Date.now() + "_" + u.uid), { by: u.uid, email: (u.email || "").toLowerCase(), action: "coordinator", target: email, note: state + " / " + district, at: now() });
     await b.commit();
   },
   async removeCoordinator(email) {
     const b = fb.writeBatch(db), u = auth.currentUser;
     b.delete(fb.doc(db, "coordinators/" + email));
-    b.set(fb.doc(fb.collection(db, "audit")), { by: u.uid, email: (u.email || "").toLowerCase(), action: "coordinator removed", target: email, note: "", at: now() });
+    b.set(fb.doc(db, "audit/coordinator_" + Date.now() + "_" + u.uid), { by: u.uid, email: (u.email || "").toLowerCase(), action: "coordinator removed", target: email, note: "", at: now() });
     await b.commit();
   },
   async auditLog() {

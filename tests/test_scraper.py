@@ -930,18 +930,22 @@ class TestFederation(unittest.TestCase):
         body = re.search(r'new RegExp\("\(" \+ String\.fromCharCode\(0x20b9\) \+ "\|(.*)\)", "is"\)', js).group(1).replace("\\\\", "\\")
         money = re.compile("(" + chr(0x20b9) + "|" + body + ")", re.I | re.S)
         for bad in ("Send to UPI gau@okaxis", "Bank account no 1234", "Need Rs 5000", "Need " + chr(0x20b9) + "500",
-                    "Scan the QR code", "Fundraising drive", "GPay 98765", "Donations in cash"):
+                    "Scan the QR code", "Fundraising drive", "GPay 98765", "Donations in cash", "G-Pay 98765",
+                    "Phone-Pe", "pay to cows@ibl", "Sponsor a cow", "1500/- per month", "NEFT details", "U P I",
+                    "PayPal me", "Milaap campaign", "acct no 1234"):
             self.assertTrue(money.search(bad), bad)
         for ok in ("We need blankets and volunteers, please donate old bedsheets", "Dry fodder, 2 tonnes",
-                   "Foster homes for 3 puppies", "Vet help for a cow with a fracture"):
+                   "Foster homes for 3 puppies", "Vet help for a cow with a fracture", "Near SBI Bank, Bank Colony",
+                   "Cow shelter behind the bus stand"):
             self.assertFalse(money.search(ok), ok)
 
     def test_rules_have_the_verification_gates(self):
         with open(os.path.join(ROOT, "firestore.rules"), encoding="utf-8") as fh:
             rules = fh.read()
-        for must in ('next().get("docsOk", false) == true', "app().vouch.ok == true", "app().vouch.by != app().uid",
-                     "app().vouch.by != request.auth.uid", 'app().visit.ok == true', 'audited("vouch_"',
-                     'allow update, delete: if false;'):
+        for must in ('app().get("docsOk", false) == true', "app().vouch.ok == true", "app().vouch.by != app().uid",
+                     "app().vouch.by != request.auth.uid", 'app().visit.ok == true', 'audited("vouch", id)',
+                     'app().vouch.role == "coordinator" || app().get("needsVisit", false) == true',
+                     'id.matches(".*_" + request.auth.uid)', 'allow update, delete: if false;'):
             self.assertIn(must, rules)
 
 class TestNoLongDashesInProject(unittest.TestCase):

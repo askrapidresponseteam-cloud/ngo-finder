@@ -24,7 +24,7 @@ const store = {
       role: "Trustee", regType: "trust", regNumber: "DK/123/2019", awbiCode: "", phone: "+91 90000 00000",
       officialEmail: "hello@paws.example", website: "", about: "Street dog rescue and sterilisation.",
       voucherEmail: "", proofs: [], driveLink: "https://drive.google.com/x", declaration: true, status: "docs_ok", docsOk: true,
-      vouch: { ok: true, by: "cora", email: "cora@example.org", note: "Know them for years", at: now() },
+      vouch: { ok: true, by: "cora", email: "cora@example.org", note: "Know them for years", at: now(), role: "coordinator" },
       createdAt: T(Date.now() - 864e5 * 5), updatedAt: now() }
   },
   proofs: { p1: { uid: "alice", name: "registration.jpg", type: "image/png", data: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" } },
@@ -64,16 +64,16 @@ export const mock = {
   },
   async apply(data) { await wait(); const id = "a" + Date.now(); store.applications[id] = Object.assign({}, data, { uid: user.uid, email: user.email, status: "submitted", createdAt: now(), updatedAt: now() }); return id; },
   async myApplications() { return list(store.applications).filter((a) => a.uid === user.uid); },
-  async updateMine(id, patch) { Object.assign(store.applications[id], patch, { status: "submitted", updatedAt: now() }); },
+  async updateMine(app, patch) { Object.assign(store.applications[app.id], patch, { status: "submitted", docsOk: false, updatedAt: now() }); },
   async forCoordinator(c) { return list(store.applications).filter((a) => a.state === c.state && (c.district === "*" || a.district === c.district)); },
   async forVoucher() { return list(store.applications).filter((a) => a.voucherEmail === user.email); },
   async allApplications() { return list(store.applications); },
-  async vouch(app, ok, note) { store.applications[app.id].vouch = { ok, by: user.uid, email: user.email, note, at: now() }; log("vouch", app.id, note); },
+  async vouch(app, ok, note, role) { store.applications[app.id].vouch = { ok, by: user.uid, email: user.email, note, at: now(), role }; log("vouch", app.id, note); },
   async visit(app, ok, how, note) { store.applications[app.id].visit = { ok, by: user.uid, email: user.email, how, note, at: now() }; log("visit", app.id, note); },
   async decide(app, patch) { Object.assign(store.applications[app.id], patch, { updatedAt: now() }); log("decide", app.id, patch.status); },
   async verify(app) {
     const a = store.applications[app.id];
-    if (!a.docsOk || !a.vouch || !a.vouch.ok || (a.needsVisit && !(a.visit && a.visit.ok))) { const e = new Error("blocked"); e.code = "permission-denied"; throw e; }
+    if (!a.docsOk || !a.vouch || !a.vouch.ok || (a.vouch.role !== "coordinator" && !a.needsVisit) || (a.needsVisit && !(a.visit && a.visit.ok))) { const e = new Error("blocked"); e.code = "permission-denied"; throw e; }
     a.status = "verified";
     store.profiles[a.gid] = { name: a.name, state: a.state, district: a.district, about: a.about, hours: "", phones: [], emails: [], website: "", services: [], species: [], members: [a.uid], capacity: { intake: "open", note: "" }, verifiedAt: now(), updatedAt: now() };
     store.public.verified[a.gid] = { n: a.name };

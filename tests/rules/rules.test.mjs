@@ -41,7 +41,7 @@ function application(over = {}) {
     name: "Amruthadhara Gaushala", state: "Karnataka", district: "Udupi", town: "Kundapura",
     address: "Alvegadde, Kundapura", role: "Founder", regType: "awbi", regNumber: "KA064/2014",
     awbiCode: "KA064/2014", phone: "", officialEmail: "", website: "", about: "Cows rescued from the highway.",
-    voucherEmail: "", proofs: [], driveLink: "", declaration: true, status: "submitted",
+    voucherEmail: "", proofs: [], driveLink: "", declaration: true, status: "submitted", rev: 0,
     createdAt: serverTimestamp(), updatedAt: serverTimestamp()
   }, over);
 }
@@ -62,32 +62,49 @@ async function seedApp(over = {}) {
   });
 }
 
-function vouchBatch(db, uid, mail, ok = true) {
-  const b = writeBatch(db);
+async function rev() {
+  let r = 0;
+  await env.withSecurityRulesDisabled(async (ctx) => { const d = await getDoc(doc(ctx.firestore(), "applications/app1")); r = (d.data() || {}).rev || 0; });
+  return r + 1;
+}
+
+async function vouchBatch(db, uid, mail, ok = true, role = "coordinator") {
+  const r = await rev(), b = writeBatch(db);
   b.update(doc(db, "applications/app1"), {
-    vouch: { ok, by: uid, email: mail, note: "Visited them last year", at: serverTimestamp() },
-    updatedAt: serverTimestamp()
+    vouch: { ok, by: uid, email: mail, note: "Visited them last year", at: serverTimestamp(), role },
+    updatedAt: serverTimestamp(), rev: r
   });
-  b.set(doc(db, "audit/vouch_app1_" + uid), { by: uid, email: mail, action: "vouch", target: "app1", note: "", at: serverTimestamp() });
+  b.set(doc(db, "audit/vouch_app1_" + r + "_" + uid), { by: uid, email: mail, action: "vouch", target: "app1", note: "", at: serverTimestamp() });
   return b;
 }
 
-function decideBatch(db, uid, mail, patch) {
-  const b = writeBatch(db);
-  b.update(doc(db, "applications/app1"), Object.assign({ updatedAt: serverTimestamp(), reviewedBy: uid }, patch));
-  b.set(doc(db, "audit/decide_app1_" + patch.status + "_" + uid), { by: uid, email: mail, action: "decide", target: "app1", note: patch.status, at: serverTimestamp() });
+async function visitBatch(db, uid, mail, ok = true) {
+  const r = await rev(), b = writeBatch(db);
+  b.update(doc(db, "applications/app1"), { visit: { ok, by: uid, email: mail, note: "Saw 40 cows, clean shed", at: serverTimestamp(), how: "site" }, updatedAt: serverTimestamp(), rev: r });
+  b.set(doc(db, "audit/visit_app1_" + r + "_" + uid), { by: uid, email: mail, action: "visit", target: "app1", note: "", at: serverTimestamp() });
   return b;
 }
 
-function verifyBatch(db, uid, mail, extra = {}) {
-  const b = decideBatch(db, uid, mail, Object.assign({ status: "verified", docsOk: true }, extra));
-  b.set(doc(db, "profiles/awbi-ka064-2014"), {
-    appId: "app1", name: "Amruthadhara Gaushala", state: "Karnataka", district: "Udupi", about: "", hours: "",
-    phones: [], emails: [], website: "", services: [], species: [], members: ["alice"],
+async function decideBatch(db, uid, mail, patch) {
+  const r = await rev(), b = writeBatch(db);
+  b.update(doc(db, "applications/app1"), Object.assign({ updatedAt: serverTimestamp(), reviewedBy: uid, rev: r }, patch));
+  b.set(doc(db, "audit/decide_app1_" + r + "_" + uid), { by: uid, email: mail, action: "decide", target: "app1", note: patch.status, at: serverTimestamp() });
+  return b;
+}
+
+function profileData(over = {}) {
+  return Object.assign({
+    appId: "app1", name: "Amruthadhara Gaushala", state: "Karnataka", district: "Udupi", town: "", about: "", hours: "",
+    phones: [], emails: [], website: "", members: ["alice"], regType: "awbi", regNumber: "KA064/2014",
     capacity: { intake: "open", note: "" }, verifiedAt: serverTimestamp(), updatedAt: serverTimestamp()
-  });
+  }, over);
+}
+
+async function verifyBatch(db, uid, mail, extra = {}) {
+  const b = await decideBatch(db, uid, mail, Object.assign({ status: "verified", docsOk: true }, extra));
+  b.set(doc(db, "profiles/awbi-ka064-2014"), profileData());
   b.set(doc(db, "members/alice"), { gid: "awbi-ka064-2014", email: "alice@example.org", appId: "app1", at: serverTimestamp() });
-  b.set(doc(db, "public/index"), { verified: { "awbi-ka064-2014": { n: "Amruthadhara Gaushala" } } }, { merge: true });
+  b.set(doc(db, "public/index"), { verified: { "awbi-ka064-2014": { n: "Amruthadhara Gaushala", st: "Karnataka", d: "Udupi" } }, last: "awbi-ka064-2014" }, { merge: true });
   return b;
 }
 
@@ -138,20 +155,23 @@ test("queries are allowed only within each role's reach", async () => {
 
 test("the applicant can fix details while waiting, but not decide anything", async () => {
   await seedApp();
-  await assertSucceeds(updateDoc(doc(applicant(), "applications/app1"), { regNumber: "KA064/2014-15", status: "submitted", updatedAt: serverTimestamp() }));
-  await assertFails(updateDoc(doc(applicant(), "applications/app1"), { docsOk: true, updatedAt: serverTimestamp() }));
-  await assertFails(updateDoc(doc(applicant(), "applications/app1"), { status: "verified", updatedAt: serverTimestamp() }));
-  await assertFails(updateDoc(doc(applicant(), "applications/app1"), { vouch: { ok: true }, updatedAt: serverTimestamp() }));
+  await assertSucceeds(updateDoc(doc(applicant(), "applications/app1"), { regNumber: "KA064/2014-15", status: "submitted", docsOk: false, rev: 1, updatedAt: serverTimestamp() }));
+  await assertFails(updateDoc(doc(applicant(), "applications/app1"), { docsOk: true, rev: 2, status: "submitted", updatedAt: serverTimestamp() }));
+  await assertFails(updateDoc(doc(applicant(), "applications/app1"), { status: "verified", rev: 2, updatedAt: serverTimestamp() }));
+  await assertFails(updateDoc(doc(applicant(), "applications/app1"), { vouch: { ok: true }, rev: 2, status: "submitted", updatedAt: serverTimestamp() }));
+  await assertFails(updateDoc(doc(applicant(), "applications/app1"), { regType: "anything", rev: 2, status: "submitted", updatedAt: serverTimestamp() }));
+  await assertFails(updateDoc(doc(applicant(), "applications/app1"), { website: "Pay by PhonePe", rev: 2, status: "submitted", updatedAt: serverTimestamp() }));
 });
 
 // ------------------------------------------------------------- vouching
 test("only a local coordinator or the named verified member can vouch, never the applicant", async () => {
   await seedPeople();
   await seedApp({ voucherEmail: "vik@example.org" });
-  await assertFails(vouchBatch(applicant(), "alice", "alice@example.org").commit());
-  await assertFails(vouchBatch(stranger(), "eve", "eve@example.org").commit());
-  await assertSucceeds(vouchBatch(verifiedMember(), "vik", "vik@example.org").commit());
-  await assertSucceeds(vouchBatch(coordUdupi(), "cora", "cora@example.org").commit());
+  await assertFails((await vouchBatch(applicant(), "alice", "alice@example.org")).commit());
+  await assertFails((await vouchBatch(stranger(), "eve", "eve@example.org")).commit());
+  await assertFails((await vouchBatch(verifiedMember(), "vik", "vik@example.org")).commit());  // not a coordinator
+  await assertSucceeds((await vouchBatch(verifiedMember(), "vik", "vik@example.org", true, "member")).commit());
+  await assertSucceeds((await vouchBatch(coordUdupi(), "cora", "cora@example.org")).commit());
 });
 
 test("a vouch must leave its audit entry", async () => {
@@ -159,7 +179,7 @@ test("a vouch must leave its audit entry", async () => {
   await seedApp();
   const db = coordUdupi();
   await assertFails(updateDoc(doc(db, "applications/app1"), {
-    vouch: { ok: true, by: "cora", email: "cora@example.org", note: "", at: serverTimestamp() }, updatedAt: serverTimestamp()
+    vouch: { ok: true, by: "cora", email: "cora@example.org", note: "", at: serverTimestamp(), role: "coordinator" }, updatedAt: serverTimestamp(), rev: 1
   }));
 });
 
@@ -167,18 +187,18 @@ test("a coordinator from another district cannot vouch", async () => {
   await seedPeople();
   await seed(async (db) => setDoc(doc(db, "coordinators/kai@example.org"), { state: "Kerala", district: "*", name: "Kai", by: "owner", at: Timestamp.now() }));
   await seedApp();
-  await assertFails(vouchBatch(as("kai", "kai@example.org"), "kai", "kai@example.org").commit());
+  await assertFails((await vouchBatch(as("kai", "kai@example.org"), "kai", "kai@example.org")).commit());
 });
 
 // ------------------------------------------------------------- verification gates
 test("an admin cannot verify without checked documents and a vouch", async () => {
   await seedPeople();
   await seedApp();
-  await assertFails(verifyBatch(owner(), "owner", OWNER).commit());
-  await assertSucceeds(decideBatch(owner(), "owner", OWNER, { status: "docs_ok", docsOk: true }).commit());
-  await assertFails(verifyBatch(owner(), "owner", OWNER).commit());  // still no vouch
-  await assertSucceeds(vouchBatch(coordUdupi(), "cora", "cora@example.org").commit());
-  await assertSucceeds(verifyBatch(owner(), "owner", OWNER).commit());
+  await assertFails((await verifyBatch(owner(), "owner", OWNER)).commit());
+  await assertSucceeds((await decideBatch(owner(), "owner", OWNER, { status: "docs_ok", docsOk: true })).commit());
+  await assertFails((await verifyBatch(owner(), "owner", OWNER)).commit());  // still no vouch
+  await assertSucceeds((await vouchBatch(coordUdupi(), "cora", "cora@example.org")).commit());
+  await assertSucceeds((await verifyBatch(owner(), "owner", OWNER)).commit());
   const p = await getDoc(doc(anon(), "profiles/awbi-ka064-2014"));
   if (!p.exists()) throw new Error("profile should be public after verification");
 });
@@ -186,48 +206,44 @@ test("an admin cannot verify without checked documents and a vouch", async () =>
 test("a negative vouch blocks verification", async () => {
   await seedPeople();
   await seedApp();
-  await assertSucceeds(decideBatch(owner(), "owner", OWNER, { status: "docs_ok", docsOk: true }).commit());
-  await assertSucceeds(vouchBatch(coordUdupi(), "cora", "cora@example.org", false).commit());
-  await assertFails(verifyBatch(owner(), "owner", OWNER).commit());
+  await assertSucceeds((await decideBatch(owner(), "owner", OWNER, { status: "docs_ok", docsOk: true })).commit());
+  await assertSucceeds((await vouchBatch(coordUdupi(), "cora", "cora@example.org", false)).commit());
+  await assertFails((await verifyBatch(owner(), "owner", OWNER)).commit());
 });
 
 test("an admin cannot verify a group they vouched for themselves", async () => {
   await seedPeople();
   await seed(async (db) => setDoc(doc(db, "coordinators/" + OWNER), { state: "Karnataka", district: "*", name: "Owner", by: "owner", at: Timestamp.now() }));
   await seedApp();
-  await assertSucceeds(decideBatch(owner(), "owner", OWNER, { status: "docs_ok", docsOk: true }).commit());
-  await assertSucceeds(vouchBatch(owner(), "owner", OWNER).commit());
-  await assertFails(verifyBatch(owner(), "owner", OWNER).commit());
-  await assertSucceeds(verifyBatch(admin2(), "admin2", "admin2@example.org").commit());
+  await assertSucceeds((await decideBatch(owner(), "owner", OWNER, { status: "docs_ok", docsOk: true })).commit());
+  await assertSucceeds((await vouchBatch(owner(), "owner", OWNER)).commit());
+  await assertFails((await verifyBatch(owner(), "owner", OWNER)).commit());
+  await assertSucceeds((await verifyBatch(admin2(), "admin2", "admin2@example.org")).commit());
 });
 
 test("when a visit is required, verification waits for a coordinator's visit", async () => {
   await seedPeople();
   await seedApp();
-  await assertSucceeds(decideBatch(owner(), "owner", OWNER, { status: "visit_required", docsOk: true, needsVisit: true }).commit());
-  await assertSucceeds(vouchBatch(coordUdupi(), "cora", "cora@example.org").commit());
-  await assertFails(verifyBatch(owner(), "owner", OWNER, { needsVisit: true }).commit());
-  const db = coordUdupi();
-  const b = writeBatch(db);
-  b.update(doc(db, "applications/app1"), { visit: { ok: true, by: "cora", email: "cora@example.org", note: "Saw 40 cows, clean shed", at: serverTimestamp(), how: "site" }, updatedAt: serverTimestamp() });
-  b.set(doc(db, "audit/visit_app1_cora"), { by: "cora", email: "cora@example.org", action: "visit", target: "app1", note: "", at: serverTimestamp() });
-  await assertSucceeds(b.commit());
-  await assertSucceeds(verifyBatch(owner(), "owner", OWNER, { needsVisit: true }).commit());
+  await assertSucceeds((await decideBatch(owner(), "owner", OWNER, { status: "visit_required", docsOk: true, needsVisit: true })).commit());
+  await assertSucceeds((await vouchBatch(coordUdupi(), "cora", "cora@example.org")).commit());
+  await assertFails((await verifyBatch(owner(), "owner", OWNER, { needsVisit: true })).commit());
+  await assertSucceeds((await visitBatch(coordUdupi(), "cora", "cora@example.org")).commit());
+  await assertSucceeds((await verifyBatch(owner(), "owner", OWNER, { needsVisit: true })).commit());
 });
 
 test("an admin cannot quietly drop a required visit", async () => {
   await seedPeople();
   await seedApp();
-  await assertSucceeds(decideBatch(owner(), "owner", OWNER, { status: "visit_required", docsOk: true, needsVisit: true }).commit());
-  await assertSucceeds(vouchBatch(coordUdupi(), "cora", "cora@example.org").commit());
-  await assertFails(verifyBatch(owner(), "owner", OWNER, { needsVisit: false }).commit());
+  await assertSucceeds((await decideBatch(owner(), "owner", OWNER, { status: "visit_required", docsOk: true, needsVisit: true })).commit());
+  await assertSucceeds((await vouchBatch(coordUdupi(), "cora", "cora@example.org")).commit());
+  await assertFails((await verifyBatch(owner(), "owner", OWNER, { needsVisit: false })).commit());
 });
 
 test("strangers and coordinators cannot make admin decisions", async () => {
   await seedPeople();
   await seedApp();
-  await assertFails(decideBatch(stranger(), "eve", "eve@example.org", { status: "docs_ok", docsOk: true }).commit());
-  await assertFails(decideBatch(coordUdupi(), "cora", "cora@example.org", { status: "docs_ok", docsOk: true }).commit());
+  await assertFails((await decideBatch(stranger(), "eve", "eve@example.org", { status: "docs_ok", docsOk: true })).commit());
+  await assertFails((await decideBatch(coordUdupi(), "cora", "cora@example.org", { status: "docs_ok", docsOk: true })).commit());
 });
 
 test("nobody can create a profile or membership without a verified application", async () => {
@@ -284,13 +300,16 @@ test("verified members post in-kind needs; nobody can ask for money", async () =
 test("proof documents are small, typed and private", async () => {
   await seedPeople();
   const ok = { uid: "alice", name: "reg.jpg", type: "image/jpeg", data: "data:image/jpeg;base64,AAAA", state: "Karnataka", district: "Udupi", createdAt: serverTimestamp() };
-  await assertSucceeds(setDoc(doc(applicant(), "proofs/p1"), ok));
-  await assertFails(setDoc(doc(applicant(), "proofs/p2"), Object.assign({}, ok, { data: "data:text/html;base64,AAAA" })));
-  await assertFails(setDoc(doc(applicant(), "proofs/p3"), Object.assign({}, ok, { uid: "eve" })));
-  await assertSucceeds(getDoc(doc(owner(), "proofs/p1")));
-  await assertSucceeds(getDoc(doc(coordUdupi(), "proofs/p1")));
-  await assertFails(getDoc(doc(stranger(), "proofs/p1")));
-  await assertFails(updateDoc(doc(applicant(), "proofs/p1"), { name: "x" }));
+  await assertSucceeds(setDoc(doc(applicant(), "proofs/alice_0"), ok));
+  await assertFails(setDoc(doc(applicant(), "proofs/alice_1"), Object.assign({}, ok, { type: "text/html", data: "data:text/html;base64,AAAA" })));
+  await assertFails(setDoc(doc(applicant(), "proofs/alice_2"), Object.assign({}, ok, { data: "data:application/pdf;base64,AAAA" })));
+  await assertFails(setDoc(doc(applicant(), "proofs/alice_3"), Object.assign({}, ok, { uid: "eve" })));
+  await assertFails(setDoc(doc(applicant(), "proofs/alice_30"), ok));
+  await assertFails(setDoc(doc(applicant(), "proofs/random"), ok));
+  await assertSucceeds(getDoc(doc(owner(), "proofs/alice_0")));
+  await assertSucceeds(getDoc(doc(coordUdupi(), "proofs/alice_0")));
+  await assertFails(getDoc(doc(stranger(), "proofs/alice_0")));
+  await assertFails(updateDoc(doc(applicant(), "proofs/alice_0"), { name: "x" }));
 });
 
 test("anyone signed in can report; only admins read reports", async () => {
@@ -304,11 +323,11 @@ test("anyone signed in can report; only admins read reports", async () => {
 
 test("the audit log can only grow", async () => {
   await seedPeople();
-  await assertSucceeds(setDoc(doc(owner(), "audit/x1"), { by: "owner", email: OWNER, action: "note", target: "t", note: "n", at: serverTimestamp() }));
-  await assertFails(updateDoc(doc(owner(), "audit/x1"), { note: "changed" }));
-  await assertFails(deleteDoc(doc(owner(), "audit/x1")));
-  await assertFails(setDoc(doc(stranger(), "audit/x2"), { by: "eve", email: "eve@example.org", action: "note", target: "t", note: "n", at: serverTimestamp() }));
-  await assertFails(getDoc(doc(coordUdupi(), "audit/x1")));
+  await assertSucceeds(setDoc(doc(owner(), "audit/x1_owner"), { by: "owner", email: OWNER, action: "note", target: "t", note: "n", at: serverTimestamp() }));
+  await assertFails(updateDoc(doc(owner(), "audit/x1_owner"), { note: "changed" }));
+  await assertFails(deleteDoc(doc(owner(), "audit/x1_owner")));
+  await assertFails(setDoc(doc(stranger(), "audit/x2_eve"), { by: "eve", email: "eve@example.org", action: "note", target: "t", note: "n", at: serverTimestamp() }));
+  await assertFails(getDoc(doc(coordUdupi(), "audit/x1_owner")));
   await assertSucceeds(getDoc(doc(coordUdupi(), "audit/not-there")));
 });
 
@@ -320,4 +339,87 @@ test("admin lists and coordinator lists are not public", async () => {
   await assertFails(getDoc(doc(stranger(), "coordinators/cora@example.org")));
   await assertSucceeds(getDoc(doc(coordUdupi(), "coordinators/cora@example.org")));
   await assertFails(setDoc(doc(coordUdupi(), "coordinators/eve@example.org"), { state: "Karnataka", district: "*", name: "", by: "cora", at: serverTimestamp() }));
+});
+
+
+// ------------------------------------------------------------- loopholes found in review
+test("nobody can take an audit id meant for someone else", async () => {
+  await seedPeople();
+  await assertFails(setDoc(doc(verifiedMember(), "audit/decide_app1_1_owner"), { by: "vik", email: "vik@example.org", action: "decide", target: "app1", note: "", at: serverTimestamp() }));
+  await assertSucceeds(setDoc(doc(verifiedMember(), "audit/note_1_vik"), { by: "vik", email: "vik@example.org", action: "note", target: "app1", note: "", at: serverTimestamp() }));
+});
+
+test("a vouch from a verified group alone is not enough: a coordinator must visit", async () => {
+  await seedPeople();
+  await seedApp({ voucherEmail: "vik@example.org" });
+  await assertSucceeds((await decideBatch(owner(), "owner", OWNER, { status: "docs_ok", docsOk: true })).commit());
+  await assertSucceeds((await vouchBatch(verifiedMember(), "vik", "vik@example.org", true, "member")).commit());
+  await assertFails((await verifyBatch(owner(), "owner", OWNER)).commit());
+  await assertSucceeds((await decideBatch(owner(), "owner", OWNER, { status: "visit_required", docsOk: true, needsVisit: true })).commit());
+  await assertSucceeds((await visitBatch(coordUdupi(), "cora", "cora@example.org")).commit());
+  await assertSucceeds((await verifyBatch(owner(), "owner", OWNER, { needsVisit: true })).commit());
+});
+
+test("changes by the applicant after the documents were checked send them back for checking", async () => {
+  await seedPeople();
+  await seedApp();
+  await assertSucceeds((await decideBatch(owner(), "owner", OWNER, { status: "info_needed", docsOk: true })).commit());
+  await assertSucceeds((await vouchBatch(coordUdupi(), "cora", "cora@example.org")).commit());
+  // keeping docsOk true while swapping documents is refused
+  await assertFails(updateDoc(doc(applicant(), "applications/app1"), { regNumber: "FAKE/1", status: "submitted", rev: await rev(), updatedAt: serverTimestamp() }));
+  await assertSucceeds(updateDoc(doc(applicant(), "applications/app1"), { regNumber: "FAKE/1", status: "submitted", docsOk: false, rev: await rev(), updatedAt: serverTimestamp() }));
+  await assertFails((await verifyBatch(owner(), "owner", OWNER)).commit());   // docs must be checked again first
+  await assertSucceeds((await decideBatch(owner(), "owner", OWNER, { status: "docs_ok", docsOk: true })).commit());
+  await assertSucceeds((await verifyBatch(owner(), "owner", OWNER)).commit());
+});
+
+test("the verify step cannot also tick the documents box", async () => {
+  await seedPeople();
+  await seedApp();
+  await assertSucceeds((await vouchBatch(coordUdupi(), "cora", "cora@example.org")).commit());
+  await assertFails((await verifyBatch(owner(), "owner", OWNER)).commit());
+});
+
+test("a refused vouch can only be changed by whoever refused", async () => {
+  await seedPeople();
+  await seedApp({ voucherEmail: "vik@example.org" });
+  await assertSucceeds((await vouchBatch(coordUdupi(), "cora", "cora@example.org", false)).commit());
+  await assertFails((await vouchBatch(verifiedMember(), "vik", "vik@example.org", true, "member")).commit());
+  await assertSucceeds((await vouchBatch(coordUdupi(), "cora", "cora@example.org", true)).commit());
+});
+
+test("verified profiles: no money in any field, no extra keys, no renaming, even by admins", async () => {
+  await seedVerified();
+  const t = serverTimestamp();
+  await assertFails(updateDoc(doc(applicant(), "profiles/awbi-ka064-2014"), { phones: ["GPay 9876543210"], updatedAt: t }));
+  await assertFails(updateDoc(doc(applicant(), "profiles/awbi-ka064-2014"), { website: "upi://pay?pa=cows@ybl", updatedAt: t }));
+  await assertFails(updateDoc(doc(applicant(), "profiles/awbi-ka064-2014"), { capacity: { intake: "open", note: "", upi: "cows@ybl" }, updatedAt: t }));
+  await assertFails(updateDoc(doc(applicant(), "profiles/awbi-ka064-2014"), { services: ["Sponsor a cow"], updatedAt: t }));
+  await assertFails(updateDoc(doc(owner(), "profiles/awbi-ka064-2014"), { name: "Someone Else", updatedAt: t }));
+  await assertSucceeds(updateDoc(doc(applicant(), "profiles/awbi-ka064-2014"), { phones: ["+91 98450 00000"], updatedAt: t }));
+});
+
+test("a second application for the same group cannot take over its profile", async () => {
+  await seedVerified();
+  await seed(async (db) => updateDoc(doc(db, "profiles/awbi-ka064-2014"), { appId: "original" }));
+  await seedApp({ uid: "mallory", email: "mallory@example.org" });
+  await assertSucceeds((await decideBatch(owner(), "owner", OWNER, { status: "docs_ok", docsOk: true })).commit());
+  await assertSucceeds((await vouchBatch(coordUdupi(), "cora", "cora@example.org")).commit());
+  const r = await rev(), db = owner(), b = writeBatch(db);
+  b.update(doc(db, "applications/app1"), { status: "verified", docsOk: true, reviewedBy: "owner", updatedAt: serverTimestamp(), rev: r });
+  b.set(doc(db, "audit/decide_app1_" + r + "_owner"), { by: "owner", email: OWNER, action: "decide", target: "app1", note: "", at: serverTimestamp() });
+  await assertFails(b.commit());   // the profile belongs to another application
+});
+
+test("the public index only changes one group at a time, matching its profile", async () => {
+  await seedVerified();
+  await assertFails(setDoc(doc(owner(), "public/index"), { verified: { "fake-group": { n: "Fake", st: "Goa", d: "North Goa" } }, last: "fake-group" }, { merge: true }));
+  await assertFails(setDoc(doc(owner(), "public/index"), { verified: { "awbi-ka064-2014": { n: "Renamed", st: "Karnataka", d: "Udupi" } }, last: "awbi-ka064-2014" }, { merge: true }));
+  await assertSucceeds(setDoc(doc(owner(), "public/index"), { verified: { "awbi-ka064-2014": { n: "Amruthadhara Gaushala", st: "Karnataka", d: "Udupi" } }, last: "awbi-ka064-2014" }, { merge: true }));
+});
+
+test("a removed need stays removed", async () => {
+  await seedVerified();
+  await seed(async (db) => setDoc(doc(db, "needs/n1"), Object.assign(need(), { status: "removed", createdAt: Timestamp.now() })));
+  await assertFails(updateDoc(doc(applicant(), "needs/n1"), { status: "open" }));
 });

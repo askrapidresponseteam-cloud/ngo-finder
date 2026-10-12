@@ -3,17 +3,21 @@ rules_version = '2';
 // Animal NGOs of India: federation data.
 //
 // Trust model (enforced here, not only in the app):
-//  * A group becomes Verified only when an admin has checked its documents,
-//    someone other than the applicant has vouched for it (a district or state
-//    coordinator, or a member of an already verified group), and, if an admin
-//    asked for one, a coordinator has done a visit or video call.
-//  * No money: no text anywhere may carry payment details or fundraising
-//    asks (UPI, bank, account numbers, rupee amounts, QR codes, wallets).
-//  * Every review step leaves a permanent audit entry.
+//  * A group becomes Verified only when an admin has checked its documents
+//    (as a separate, earlier step), someone else has vouched for it, and a
+//    coordinator was involved: either the vouch came from a coordinator for
+//    that place, or a coordinator did a visit or video call. A vouch from a
+//    verified group alone is never enough, so fake groups cannot vouch each
+//    other in. The deciding admin can be neither the applicant nor the voucher.
+//  * Any change by the applicant after the documents were checked sends them
+//    back for checking. A refused vouch can only be changed by whoever gave it.
+//  * No money: no text anywhere may carry payment details or fundraising asks
+//    (UPI, bank, account numbers, rupee amounts, QR codes, wallets, sponsorship).
+//  * Every review step leaves its own permanent audit entry (one per revision).
 //
-// The owner email below is the first admin. More admins are listed in the
-// document config/admins (field "emails"), which only the Firebase console
-// can change.
+// The owner email below is the first admin. More admins are listed (lowercase)
+// in the document config/admins, field "emails", which only the Firebase
+// console can change.
 
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -24,6 +28,9 @@ service cloud.firestore {
     }
     function email() {
       return request.auth.token.email.lower();
+    }
+    function docPath(p) {
+      return path("/databases/" + database + "/documents/" + p);
     }
     function isOwner() {
       return signedIn() && email() == "narenkumar19706@gmail.com";
@@ -51,19 +58,39 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/members/$(request.auth.uid)).data.gid == gid;
     }
     // Payment details and fundraising asks. Case-insensitive, any line.
+    // Keep in step with MONEY in scraper/web/fed/common.js (a test checks they match).
     function hasMoney(s) {
-      return s.matches('(?is).*(₹|\\brs\\.? ?[0-9]|\\binr\\b|rupee|\\bupi\\b|@ok(axis|hdfc|icici|sbi)|@ybl|@paytm|paytm|g ?pay|google ?pay|phone ?pe|bhim|\\bbank\\b|account ?(no|number)|\\ba/c\\b|ifsc|\\bcash\\b|money|\\bfunds?\\b|fund ?rais|crowd ?fund|qr ?code|wallet|donat(e|ion)s? (of|in) (money|cash)).*');
+      return s.matches('(?is).*(₹|\\brs\\.? ?[0-9]|[0-9] ?/-|\\binr\\b|rupee|\\bu\\.? ?p\\.? ?i\\b|@(ok[a-z]+|ybl|ibl|axl|apl|paytm|upi)\\b|paytm|g-? ?pay|google ?pay|phone-? ?pe|amazon ?pay|paypal|razorpay|milaap|ketto|bhim|\\bneft\\b|\\bimps\\b|cheque|bank ?(account|details|transfer|a/?c)|acc?t\\.? ?(no|number)|account ?(no|number)|\\ba/c\\b|ifsc|\\bcash\\b|money|\\bfunds?\\b|fund ?rais|crowd ?fund|qr ?code|wallet|sponsor|donat(e|ion)s? (of|in) (money|cash)).*');
     }
-    function cleanText(s, max) {
+    function textOk(s, max) {
       return s is string && s.size() <= max && !hasMoney(s);
+    }
+    function shortOk(s, max) {
+      return s is string && s.size() <= max;
+    }
+    // Up to three short entries, each checked (rules cannot loop).
+    function listOk(l, max) {
+      return l is list && l.size() <= 3
+        && (l.size() < 1 || textOk(l[0], max))
+        && (l.size() < 2 || textOk(l[1], max))
+        && (l.size() < 3 || textOk(l[2], max));
     }
     function onlyChanges(keys) {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys);
     }
-    // Review steps must write their audit entry in the same batch.
-    function audited(id, action) {
-      return getAfter(/databases/$(database)/documents/audit/$(id)).data.action == action
-        && getAfter(/databases/$(database)/documents/audit/$(id)).data.by == request.auth.uid;
+    // Every change to an application bumps its revision by one.
+    function nextRev() {
+      return request.resource.data.rev == resource.data.get("rev", 0) + 1;
+    }
+    // A review step writes a new audit entry, named after the step, the
+    // application, the new revision and the reviewer, in the same batch.
+    function audited(action, appId) {
+      return auditedId(action + "_" + appId + "_" + string(request.resource.data.rev) + "_" + request.auth.uid, action);
+    }
+    function auditedId(id, action) {
+      return !exists(docPath("audit/" + id))
+        && getAfter(docPath("audit/" + id)).data.action == action
+        && getAfter(docPath("audit/" + id)).data.by == request.auth.uid;
     }
 
     // ---------------------------------------------------------- config
@@ -75,9 +102,10 @@ service cloud.firestore {
     // ---------------------------------------------------------- coordinators
     match /coordinators/{mail} {
       allow read: if isAdmin() || (signedIn() && email() == mail);
-      allow create, update: if isAdmin()
+      allow create, update: if isAdmin() && mail == mail.lower()
         && request.resource.data.keys().hasOnly(["state", "district", "name", "by", "at"])
-        && request.resource.data.state is string && request.resource.data.district is string
+        && shortOk(request.resource.data.state, 60) && shortOk(request.resource.data.district, 60)
+        && textOk(request.resource.data.name, 100)
         && request.resource.data.by == request.auth.uid && request.resource.data.at == request.time;
       allow delete: if isAdmin();
     }
@@ -87,6 +115,15 @@ service cloud.firestore {
     match /applications/{id} {
       function app() { return resource.data; }
       function next() { return request.resource.data; }
+      function detailsOk() {
+        return textOk(next().about, 2000) && textOk(next().address, 500) && textOk(next().town, 120)
+          && textOk(next().phone, 30) && textOk(next().officialEmail, 200) && textOk(next().website, 300)
+          && next().regType in ["awbi", "darpan", "trust", "society", "section8", "other"]
+          && textOk(next().regNumber, 80) && next().regNumber.size() >= 3
+          && shortOk(next().voucherEmail, 200) && next().voucherEmail == next().voucherEmail.lower()
+          && shortOk(next().driveLink, 500)
+          && next().proofs is list && next().proofs.size() <= 6;
+      }
 
       allow read: if isAdmin()
         || (signedIn() && app().uid == request.auth.uid)
@@ -97,85 +134,104 @@ service cloud.firestore {
         && next().keys().hasOnly(["uid", "email", "kind", "gid", "name", "state", "district", "town", "address",
                                   "role", "regType", "regNumber", "awbiCode", "phone", "officialEmail", "website",
                                   "about", "voucherEmail", "proofs", "driveLink", "declaration", "status",
-                                  "createdAt", "updatedAt"])
+                                  "rev", "createdAt", "updatedAt"])
         && next().uid == request.auth.uid && next().email == email()
         && next().kind in ["claim", "new"]
-        && next().status == "submitted"
+        && next().status == "submitted" && next().rev == 0
         && next().declaration == true
         && next().createdAt == request.time && next().updatedAt == request.time
-        && next().gid is string && next().gid.size() > 0 && next().gid.size() <= 200
-        && cleanText(next().name, 200) && next().name.size() > 2
-        && next().state is string && next().district is string
-        && cleanText(next().about, 2000) && cleanText(next().address, 500) && cleanText(next().role, 100)
-        && next().regType in ["awbi", "darpan", "trust", "society", "section8", "other"]
-        && next().regNumber is string && next().regNumber.size() >= 3 && next().regNumber.size() <= 80
-        && next().voucherEmail is string && next().voucherEmail.size() <= 200
-        && next().proofs is list && next().proofs.size() <= 6
-        && next().driveLink is string && next().driveLink.size() <= 500;
+        && shortOk(next().gid, 200) && next().gid.size() > 0
+        && textOk(next().name, 200) && next().name.size() > 2
+        && shortOk(next().state, 60) && next().state.size() > 0
+        && shortOk(next().district, 60) && next().district.size() > 0
+        && textOk(next().role, 100) && shortOk(next().awbiCode, 40)
+        && detailsOk();
 
-      // The applicant may fix details while it waits or after "more information needed".
+      // The applicant may fix details while it waits or after "more information
+      // needed". Any change sends the documents back for checking.
       allow update: if signedIn() && app().uid == request.auth.uid
         && app().status in ["submitted", "info_needed"]
         && onlyChanges(["about", "address", "regNumber", "regType", "phone", "officialEmail", "website",
-                        "voucherEmail", "proofs", "driveLink", "status", "updatedAt", "town"])
+                        "voucherEmail", "proofs", "driveLink", "status", "updatedAt", "town", "docsOk", "rev"])
+        && nextRev()
         && next().status == "submitted" && next().updatedAt == request.time
-        && cleanText(next().about, 2000) && cleanText(next().address, 500)
-        && next().proofs.size() <= 6;
+        && next().get("docsOk", false) == false
+        && detailsOk();
 
       // The voucher: a coordinator for that place, or a member of a verified group
-      // whose email the applicant named. Never the applicant.
+      // whose email the applicant named. Never the applicant. A refused vouch can
+      // only be changed by whoever refused.
       allow update: if signedIn() && app().uid != request.auth.uid
-        && onlyChanges(["vouch", "updatedAt"])
+        && onlyChanges(["vouch", "updatedAt", "rev"])
+        && nextRev()
         && app().status in ["submitted", "docs_ok", "visit_required"]
-        && (coordinates(app().state, app().district) || (app().voucherEmail == email() && isVerifiedMember()))
-        && next().vouch.keys().hasOnly(["ok", "by", "email", "note", "at"])
+        && (!("vouch" in app()) || app().vouch.ok == true || app().vouch.by == request.auth.uid)
+        && next().vouch.keys().hasOnly(["ok", "by", "email", "note", "at", "role"])
         && next().vouch.by == request.auth.uid && next().vouch.email == email()
         && next().vouch.at == request.time && next().vouch.ok is bool
-        && cleanText(next().vouch.note, 1000)
+        && textOk(next().vouch.note, 1000)
         && next().updatedAt == request.time
-        && audited("vouch_" + id + "_" + request.auth.uid, "vouch");
+        && ((next().vouch.role == "coordinator" && coordinates(app().state, app().district))
+            || (next().vouch.role == "member" && app().voucherEmail == email()
+                && isVerifiedMember() && !memberOf(app().gid)))
+        && audited("vouch", id);
 
       // A coordinator records a visit or video call.
       allow update: if signedIn() && app().uid != request.auth.uid
-        && onlyChanges(["visit", "updatedAt"])
+        && onlyChanges(["visit", "updatedAt", "rev"])
+        && nextRev()
         && app().status == "visit_required"
         && coordinates(app().state, app().district)
         && next().visit.keys().hasOnly(["ok", "by", "email", "note", "at", "how"])
-        && next().visit.by == request.auth.uid && next().visit.at == request.time
+        && next().visit.by == request.auth.uid && next().visit.email == email()
+        && next().visit.at == request.time
         && next().visit.ok is bool && next().visit.how in ["site", "video"]
-        && cleanText(next().visit.note, 1000)
+        && textOk(next().visit.note, 1000)
         && next().updatedAt == request.time
-        && audited("visit_" + id + "_" + request.auth.uid, "visit");
+        && audited("visit", id);
 
-      // Admin decisions. Verified only after documents, a vouch by someone else
-      // (not the applicant, not this admin) and, if asked, a visit.
+      // Admin decisions.
       allow update: if app().uid != request.auth.uid
-        && onlyChanges(["status", "docsOk", "docsNote", "needsVisit", "decision", "updatedAt", "reviewedBy"])
+        && onlyChanges(["status", "docsOk", "docsNote", "needsVisit", "decision", "updatedAt", "reviewedBy", "rev"])
+        && nextRev()
         && isAdmin()
-        && audited("decide_" + id + "_" + next().status + "_" + request.auth.uid, "decide")
-        && onlyChanges(["status", "docsOk", "docsNote", "needsVisit", "decision", "updatedAt", "reviewedBy"])
         && next().status in ["submitted", "info_needed", "docs_ok", "visit_required", "verified", "rejected", "suspended"]
         && next().updatedAt == request.time && next().reviewedBy == request.auth.uid
+        && textOk(next().get("decision", ""), 1000) && textOk(next().get("docsNote", ""), 1000)
         // Once a visit has been asked for, it cannot be dropped.
         && (app().get("needsVisit", false) != true || next().get("needsVisit", false) == true)
-        && (next().status != "verified" || (
-              next().get("docsOk", false) == true
-              && app().vouch.ok == true && app().vouch.by != app().uid && app().vouch.by != request.auth.uid
-              && (next().get("needsVisit", false) != true || app().visit.ok == true)))
         && (next().status != "visit_required" || next().get("needsVisit", false) == true)
-        && (next().status != "docs_ok" || next().get("docsOk", false) == true);
+        && (next().status != "docs_ok" || next().get("docsOk", false) == true)
+        && (next().status != "suspended" || app().status == "verified")
+        && (next().status != "verified" || (
+              app().status in ["submitted", "docs_ok", "visit_required"]
+              // documents were checked in an earlier step
+              && app().get("docsOk", false) == true && next().get("docsOk", false) == true
+              // vouched for by someone other than the applicant and this admin
+              && app().vouch.ok == true && app().vouch.by != app().uid && app().vouch.by != request.auth.uid
+              // a coordinator vouched, or a coordinator visited
+              && (app().vouch.role == "coordinator" || app().get("needsVisit", false) == true)
+              && (next().get("needsVisit", false) != true || app().visit.ok == true)
+              // never take over another application's profile
+              && (!exists(docPath("profiles/" + app().gid)) || get(docPath("profiles/" + app().gid)).data.appId == id)))
+        && audited("decide", id);
 
       allow delete: if false;
     }
 
     // ---------------------------------------------------------- proof documents
-    // Small compressed images or PDFs stored as data URLs (free plan has no file storage).
+    // Small compressed images or PDFs stored as data URLs (free plan has no file
+    // storage). At most 30 per person: ids are <uid>_0 to <uid>_29.
     match /proofs/{id} {
       allow create: if signedIn()
+        && id.matches(request.auth.uid + "_([0-9]|[12][0-9])")
         && request.resource.data.keys().hasOnly(["uid", "name", "type", "data", "state", "district", "createdAt"])
         && request.resource.data.uid == request.auth.uid
+        && shortOk(request.resource.data.name, 120)
+        && request.resource.data.type in ["image/jpeg", "image/png", "image/webp", "application/pdf"]
+        && shortOk(request.resource.data.state, 60) && shortOk(request.resource.data.district, 60)
         && request.resource.data.data is string && request.resource.data.data.size() < 950000
-        && request.resource.data.data.matches('data:(image/(jpeg|png|webp)|application/pdf);base64,.*')
+        && request.resource.data.data.matches("data:" + request.resource.data.type + ";base64,.*")
         && request.resource.data.createdAt == request.time;
       allow read: if isAdmin() || (signedIn() && resource.data.uid == request.auth.uid)
         || coordinates(resource.data.state, resource.data.district);
@@ -186,43 +242,75 @@ service cloud.firestore {
     // ---------------------------------------------------------- members
     // Written by an admin when an application is verified.
     match /members/{uid} {
+      function vapp() { return getAfter(docPath("applications/" + request.resource.data.appId)).data; }
       allow read: if isAdmin() || (signedIn() && request.auth.uid == uid);
       allow create: if isAdmin()
         && request.resource.data.keys().hasOnly(["gid", "email", "appId", "at"])
-        && getAfter(/databases/$(database)/documents/applications/$(request.resource.data.appId)).data.status == "verified"
-        && getAfter(/databases/$(database)/documents/applications/$(request.resource.data.appId)).data.uid == uid;
+        && vapp().status == "verified" && vapp().uid == uid
+        && request.resource.data.gid == vapp().gid && request.resource.data.email == vapp().email;
       allow update: if false;
       allow delete: if isAdmin();
     }
 
     // ---------------------------------------------------------- verified profiles (public)
     match /profiles/{gid} {
+      function vapp() { return getAfter(docPath("applications/" + request.resource.data.appId)).data; }
+      function editableOk() {
+        return textOk(request.resource.data.about, 2000)
+          && textOk(request.resource.data.hours, 300)
+          && listOk(request.resource.data.phones, 30)
+          && listOk(request.resource.data.emails, 200)
+          && textOk(request.resource.data.website, 300)
+          && request.resource.data.capacity.keys().hasOnly(["intake", "note"])
+          && request.resource.data.capacity.intake in ["open", "limited", "full"]
+          && textOk(request.resource.data.capacity.note, 300)
+          && request.resource.data.updatedAt == request.time;
+      }
       allow read: if true;
+      // Only in the batch that verifies its application, copying that application.
       allow create: if isAdmin()
-        && getAfter(/databases/$(database)/documents/applications/$(request.resource.data.appId)).data.status == "verified"
-        && getAfter(/databases/$(database)/documents/applications/$(request.resource.data.appId)).data.gid == gid;
-      // Members keep their own profile current; no money text.
-      allow update: if (memberOf(gid)
-          && onlyChanges(["about", "phones", "emails", "website", "hours", "services", "species", "capacity", "updatedAt"])
-          && cleanText(request.resource.data.about, 2000)
-          && cleanText(request.resource.data.hours, 300)
-          && request.resource.data.updatedAt == request.time
-          && (!("capacity" in request.resource.data) || (
-                request.resource.data.capacity.intake in ["open", "limited", "full"]
-                && cleanText(request.resource.data.capacity.note, 300))))
-        || isAdmin();
+        && request.resource.data.keys().hasOnly(["appId", "name", "state", "district", "town", "about", "hours",
+                                                 "phones", "emails", "website", "members", "regType", "regNumber",
+                                                 "capacity", "verifiedAt", "updatedAt"])
+        && vapp().status == "verified" && vapp().gid == gid
+        && request.resource.data.name == vapp().name
+        && request.resource.data.state == vapp().state && request.resource.data.district == vapp().district
+        && request.resource.data.members == [vapp().uid]
+        && request.resource.data.verifiedAt == request.time
+        && editableOk();
+      // Members (and admins) keep the details current; the name and place never change.
+      allow update: if (memberOf(gid) || isAdmin())
+        && onlyChanges(["about", "phones", "emails", "website", "hours", "capacity", "updatedAt"])
+        && editableOk();
       allow delete: if isAdmin();
     }
 
     // Verified groups at a glance, for the public directory (one read per visit).
+    // Each write adds or removes exactly one group, matching its profile.
     match /public/{doc} {
+      function indexOk() {
+        let before = resource == null ? {} : resource.data.get("verified", {});
+        let after = request.resource.data.verified;
+        let g = request.resource.data.last;
+        return doc == "index"
+          && request.resource.data.keys().hasOnly(["verified", "last"])
+          && g is string
+          && after.diff(before).affectedKeys().hasOnly([g])
+          && ((g in after
+                && after[g].keys().hasOnly(["n", "st", "d"])
+                && existsAfter(docPath("profiles/" + g))
+                && getAfter(docPath("profiles/" + g)).data.name == after[g].n
+                && getAfter(docPath("profiles/" + g)).data.state == after[g].st
+                && getAfter(docPath("profiles/" + g)).data.district == after[g].d)
+              || (!(g in after) && !existsAfter(docPath("profiles/" + g))));
+      }
       allow read: if true;
-      allow write: if isAdmin();
+      allow write: if isAdmin() && indexOk();
     }
 
     // ---------------------------------------------------------- needs (public, in-kind only)
     match /needs/{id} {
-      function prof() { return get(/databases/$(database)/documents/profiles/$(request.resource.data.gid)).data; }
+      function prof() { return get(docPath("profiles/" + request.resource.data.gid)).data; }
       allow read: if true;
       allow create: if memberOf(request.resource.data.gid)
         && request.resource.data.keys().hasOnly(["gid", "name", "state", "district", "kind", "text", "urgent",
@@ -231,16 +319,18 @@ service cloud.firestore {
         && request.resource.data.state == prof().state && request.resource.data.district == prof().district
         && request.resource.data.kind in ["food", "medicine", "supplies", "volunteers", "transport", "foster",
                                           "adoption", "vet", "other"]
-        && cleanText(request.resource.data.text, 600) && request.resource.data.text.size() >= 5
+        && textOk(request.resource.data.text, 600) && request.resource.data.text.size() >= 5
         && request.resource.data.urgent is bool
         && request.resource.data.status == "open" && request.resource.data.by == request.auth.uid
         && request.resource.data.createdAt == request.time
         && request.resource.data.expiresAt > request.time
         && request.resource.data.expiresAt <= request.time + duration.value(31, "d");
       allow update: if (memberOf(resource.data.gid)
+          && resource.data.status != "removed"
           && onlyChanges(["status", "text", "urgent", "expiresAt"])
           && request.resource.data.status in ["open", "met", "closed"]
-          && cleanText(request.resource.data.text, 600)
+          && textOk(request.resource.data.text, 600)
+          && request.resource.data.urgent is bool
           && request.resource.data.expiresAt <= request.time + duration.value(31, "d"))
         || (isAdmin() && onlyChanges(["status"]) && request.resource.data.status == "removed");
       allow delete: if isAdmin();
@@ -251,24 +341,28 @@ service cloud.firestore {
       allow create: if signedIn()
         && request.resource.data.keys().hasOnly(["target", "targetName", "reason", "text", "uid", "email", "status", "createdAt"])
         && request.resource.data.uid == request.auth.uid && request.resource.data.email == email()
+        && shortOk(request.resource.data.target, 200) && shortOk(request.resource.data.targetName, 200)
         && request.resource.data.reason in ["fake", "money", "wrong", "cruelty", "closed", "other"]
-        && request.resource.data.text is string && request.resource.data.text.size() <= 2000
+        && shortOk(request.resource.data.text, 2000)
         && request.resource.data.status == "open" && request.resource.data.createdAt == request.time;
       allow read: if isAdmin();
-      allow update: if isAdmin() && onlyChanges(["status", "resolution", "resolvedBy", "resolvedAt"]);
+      allow update: if isAdmin() && onlyChanges(["status", "resolution", "resolvedBy", "resolvedAt"])
+        && shortOk(request.resource.data.resolution, 1000);
       allow delete: if false;
     }
 
     // ---------------------------------------------------------- audit log (append only)
+    // Entry ids end with the writer's uid, so nobody can take an id meant for someone else.
     match /audit/{id} {
-      // Admins read everything; others may check their own entries (to avoid writing one twice).
+      // Admins read everything; others may check their own entries.
       allow read: if isAdmin() || (signedIn() && (resource == null || resource.data.by == request.auth.uid));
       allow create: if (isAdmin() || isCoordinator() || isVerifiedMember())
+        && id.matches(".*_" + request.auth.uid)
         && request.resource.data.keys().hasOnly(["by", "email", "action", "target", "note", "at"])
         && request.resource.data.by == request.auth.uid && request.resource.data.email == email()
         && request.resource.data.at == request.time
-        && request.resource.data.action is string && request.resource.data.note is string
-        && request.resource.data.note.size() <= 2000;
+        && shortOk(request.resource.data.action, 40) && shortOk(request.resource.data.target, 300)
+        && shortOk(request.resource.data.note, 2000);
       allow update, delete: if false;
     }
   }

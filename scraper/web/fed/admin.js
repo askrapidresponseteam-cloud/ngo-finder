@@ -136,9 +136,13 @@ function appItem(a, apps, index, refresh) {
       if (needNote && !note.value.trim()) return toast("Write a note first.");
       try { await B.decide(a, Object.assign({ decision: note.value.trim() }, patch)); toast("Saved."); refresh(); } catch (e) { toast(errText(e)); }
     };
-    const canVerify = a.docsOk && a.vouch && a.vouch.ok && a.vouch.by !== user.uid && a.vouch.by !== a.uid && (!a.needsVisit || (a.visit && a.visit.ok));
-    const why = !a.docsOk ? "Check the documents first." : !(a.vouch && a.vouch.ok) ? "Waiting for a vouch." :
-      a.vouch.by === user.uid ? "You vouched; another admin must verify." : a.needsVisit && !(a.visit && a.visit.ok) ? "Waiting for the visit." : "";
+    const coordInvolved = a.vouch && (a.vouch.role === "coordinator" || a.needsVisit);
+    const canVerify = a.docsOk && a.vouch && a.vouch.ok && a.vouch.by !== user.uid && a.vouch.by !== a.uid && coordInvolved &&
+      (!a.needsVisit || (a.visit && a.visit.ok));
+    const why = !a.docsOk ? "Check the documents first (mark Documents OK)." : !(a.vouch && a.vouch.ok) ? "Waiting for a vouch." :
+      a.vouch.by === user.uid ? "You vouched; another admin must verify." :
+      !coordInvolved ? "Vouched by a verified group, not a coordinator: require a visit by a coordinator." :
+      a.needsVisit && !(a.visit && a.visit.ok) ? "Waiting for the visit." : "";
     const verify = el("button", { cls: "pill blue", type: "button", text: "Verify", disabled: !canVerify, title: why || "All checks done" });
     verify.addEventListener("click", async () => {
       if (!confirm("Verify " + a.name + "? Their profile becomes public with a Verified badge.")) return;
