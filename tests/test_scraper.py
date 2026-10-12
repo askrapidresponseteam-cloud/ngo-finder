@@ -973,6 +973,29 @@ class TestRrtRules(unittest.TestCase):
             self.assertIn(path, ("ngo", "admins"), path)
 
 
+class TestRemoved(unittest.TestCase):
+    RULES = [{"name_contains": "sudheendra aithal", "state": "Karnataka", "note": "x"}]
+
+    def test_taken_off_by_name_other_name_or_person_in_that_state(self):
+        from scraper import removed
+        base = {"n": "Animal Rescue Center By Sudheendra Aithal", "k": [], "pp": [], "st": "Karnataka"}
+        self.assertTrue(removed.matches(base, self.RULES))
+        self.assertTrue(removed.matches(dict(base, n="Saligrama Rescue", k=["Sudheendra Aithal's shelter"]), self.RULES))
+        self.assertTrue(removed.matches(dict(base, n="Saligrama Rescue", pp=[{"n": "Sudheendra Aithal"}]), self.RULES))
+        self.assertFalse(removed.matches(dict(base, st="Kerala"), self.RULES))
+        self.assertFalse(removed.matches(dict(base, n="Sudheendra Aithalabad Trust"), self.RULES))
+
+    def test_builds_and_the_live_data_leave_them_out(self):
+        from scraper import removed
+        self.assertTrue(removed.load())
+        with open(os.path.join(ROOT, "site", "data", "ngos.json"), encoding="utf-8") as fh:
+            orgs = json.load(fh)["orgs"]
+        self.assertFalse([o["n"] for o in orgs if removed.matches(o)])
+        kept = removed.keep([{"n": "Animal Rescue Center By Sudheendra Aithal", "k": [], "pp": [], "st": "Karnataka"},
+                             {"n": "CUPA", "k": [], "pp": [], "st": "Karnataka"}])
+        self.assertEqual([o["n"] for o in kept], ["CUPA"])
+
+
 class TestFederation(unittest.TestCase):
     def test_site_build_ships_federation_files_but_not_the_mock(self):
         out = tempfile.mkdtemp()

@@ -16,7 +16,7 @@ import shutil
 from datetime import date
 from urllib.parse import urlparse
 
-from . import geo, networks, rrcss
+from . import geo, networks, removed, rrcss
 from .classify import categories
 from .dataset import SNAPSHOT_DATE
 from .export import sort_key
@@ -138,6 +138,7 @@ def payload(orgs, generated=None):
     data = [r for r in data if r["sr"] or r["m"] or r["ad"]]  # nothing to check it against: leave out
     # Map listings found by name alone must clearly be an animal group (see ola_places.name_ok).
     data = [r for r in data if r["src"] != ["Ola Maps"] or ola_places.name_ok(r["n"])]
+    data = removed.keep(data)  # taken off by the directory's owner (data/removed.csv)
     meta = {
         "date": (generated or date.today()).strftime("%d %b %Y").lstrip("0"),
         "awbi_date": SNAPSHOT_DATE,

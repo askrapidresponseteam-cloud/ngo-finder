@@ -27,6 +27,7 @@ MUST_HAVE = [
     ("Asare Animal Trust", None),
 ]
 
+from scraper import removed  # noqa: E402
 errors = []
 FED_FILES = ("join.html", "admin.html", "fed/api.js", "fed/common.js", "fed/config.js", "fed/join.js", "fed/admin.js",
              "fed/public.js", "fed/shared.js", "vendor/firebase.js")
@@ -52,7 +53,10 @@ if not errors:
     if len(orgs) < 160:
         errors.append("only {} groups; expected at least 160".format(len(orgs)))
     seen = set()
+    taken_off = removed.load()
     for o in orgs:
+        if removed.matches(o, taken_off):
+            errors.append("taken off the directory (scraper/data/removed.csv) but listed: " + o["n"])
         if not o.get("st"):
             errors.append("no state for " + o["n"])
         elif o["d"] != "Unknown" and (o["st"], o["d"]) not in VALID:
