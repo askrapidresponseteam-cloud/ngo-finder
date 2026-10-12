@@ -100,27 +100,64 @@ def plan(only=None, states=None):
     return out
 
 
-# A map listing is kept only if its name clearly says it is an animal group:
-# a word that only animal groups use (gaushala, animal, SPCA, jeev daya...)...
-ANIMAL_NAME = re.compile(
-    r"animal|go ?shala|go ?sala|gou ?sala|gow ?sala|goshal|gau ?shala|gaushal|gausala|gaushaala|gow ?shala|gowshal|gou ?shala|goushal|"
-    r"pinjra|panjra|pinjara|panjara|\b(gau|go|gou|gow)[ -]?(seva|sewa|sadan|dham|raksha|rakshan|mata|ashram|ashrama|aashram|sanvardhan|samvardhan|sanrakshan|palan|nivas)|gausadan|gaudham|gaumata|"
-    r"\bjee?v ?(daya|raksha)|\bjiv ?(daya|raksha)|jivdaya|jeevdaya|\bprani\b|prani ?(daya|mitra|seva|kalyan)|wild ?life|\bspca\b|"
-    r"people for animals|\bpfa\b|blue cross|\bstray|voiceless|cruelty|humane|fauna|compassion", re.I)
-# ...or an animal word (dog, cow, bird...) together with a welfare word (rescue,
-# shelter, trust, seva...). Names like Karuna, Nandi, Kamadhenu or Jeevan alone are
-# mostly shops, schools and homes, so they never count on their own.
+# Only animal welfare NGOs, shelters (gaushalas included) and wildlife groups belong
+# in the directory. A map listing is kept only if its name says so plainly:
+#   1. a word only cow shelters use (gaushala, pinjrapole, gau seva, jeev daya...), or
+#   2. a known animal welfare network (SPCA, People For Animals, Blue Cross...), or
+#   3. "strays" or "stray animals", or
+#   4. an animal word (animal, dog, cow, wildlife...) together with either a rescue or
+#      shelter word (rescue, shelter, welfare, protection...) or an NGO word (trust,
+#      society, foundation, samiti, organisation...).
+# "Animal Care", "Animal House", "Dog Care Centre" and the like are mostly vet clinics,
+# labs, gyms and shops, so an animal word with only "care" or "centre" is not enough.
+GAUSHALA_NAME = re.compile(
+    r"go ?shala|go ?sala|gou ?sala|gow ?sala|goshal|gau ?shala|gaushal|gausala|gaushaala|gow ?shala|gowshal|gou ?shala|goushal|"
+    r"pinjra|panjra|pinjara|panjara|\b(gau|go|gou|gow)[ -]?(seva|sewa|sadan|dham|raksha|rakshan|mata|ashram|ashrama|aashram|sanvardhan|samvardhan|sanrakshan|samrakshan|samrakshana|palan|nivas|dhaam|swarga)|gausadan|gaudham|gaumata|govansh|gosamrakshan|gorakshan|"
+    r"\bjee?v ?(daya|raksha)|\bjiv ?(daya|raksha)|jivdaya|jeevdaya|prani ?(daya|mitra|seva|kalyan)", re.I)
+NETWORK_NAME = re.compile(
+    r"\bs\.?p\.?c\.?a\b|people'?s? for animal|\bpfa\b|blue cross|animal aid|friends of animals|wildlife sos|"
+    r"animal birth control|\babc cent|compassion unlimited|\bcupa\b|voice of stray|save (the )?animals", re.I)
+STRAYS_NAME = re.compile(r"\bstrays\b|stray animals?\b", re.I)
+# Animal words that are also common in names of shops, housing societies and temples
+# (bird, cow, pet, pashu) count only next to a rescue word, never next to "society" alone.
 ANIMAL_WORD = re.compile(
-    r"\bdogs?\b|\bcats?\b|\bbirds?\b|\bcows?\b|cattle|\bpets?\b|\bpaws?\b|canine|feline|horses?\b|donkeys?\b|turtles?\b|"
-    r"elephants?\b|monkeys?\b|vultures?\b|snakes?\b|reptiles?\b|\bsarp|\bpashu|bovine|kam(a)?dhenu", re.I)
-WELFARE_WORD = re.compile(
-    r"rescue|shelter|welfare|trust\b|foundation|society|sanstha|samiti|\bsangh|\bseva\b|\bsewa\b|\bcare\b|"
-    r"sanctuary|haven|adoption|\bngo\b|rehab|feeding|protection|raksha|daya\b|kalyan|mitra|ashray|aashray|refuge", re.I)
+    r"animal|\bstray|fauna|wild ?life|\bdogs?\b|\bcats?\b|\bbirds?\b|\bcows?\b|cattle|\bpets?\b|\bpaws?\b|canine|feline|"
+    r"horses?\b|donkeys?\b|turtles?\b|elephants?\b|monkeys?\b|vultures?\b|snakes?\b|reptiles?\b|\bsarp|\bpashu(?!pat)|\bpasu\b|"
+    r"\bprani\b|bovine|\bjee?v(?!an)|\bjiv(?!an)|voiceless|cruelty|humane|compassion", re.I)
+STRONG_ANIMAL_WORD = re.compile(
+    r"animal|\bstray|fauna|wild ?life|\bdogs?\b|\bcats?\b|\bpaws\b|canine|feline|snakes?\b|reptiles?\b|\bsarp|\bprani\b|"
+    r"\bjee?v(?!an)|\bjiv(?!an)|voiceless|cruelty|humane", re.I)
+RESCUE_WORD = re.compile(
+    r"rescue|resque|shelter|welfare|sanctuary|haven|adoption|rehab|refuge|feeding|protection|conservation|recovery|"
+    r"raksha|rakshak|rakshan|daya\b|kalyan|mitra|ashray|aashray|\bseva\b|\bsewa\b|care home|home for", re.I)
+NGO_WORD = re.compile(
+    r"trust\b|society|foundation|samiti|\bsangh|sanstha|organi[sz]ation|assoc|\bngo\b|federation|alliance|collective|"
+    r"mission\b|network\b|forum\b|parishad|\bmandal", re.I)
+# Businesses, places and addresses that happen to use those words.
+NOT_A_GROUP_NAME = re.compile(
+    r"\bgym\b|\bbar\b|kitchen|animal planet|design|atelier|\bmedia\b|entertainment|factory|cinema|consultan|emporium|"
+    r"nutrition|\btimes\b|parking|cremat|kidney|netting|monkey catcher|control service|surgery|medicos|touris|\bvilla\b|"
+    r"tailor|jewel|electronics\b|electonics|granite|crusher|makeup|beauty|boutique|garment|textile|travels|transport|"
+    r"\bmats?\b|insurance|\bdr\b\.?\s|\bpvt\b|\bltd\b|(?<!un)limited|housing|co[- ]?op|graveyard|swimming|\bpool\b|credit|dugdh|utpadak|sahyog|"
+    r"welfare board|deliver|\bvidya\b|seva office|pashu seva cent|\bbuilding\b|\bcomplex\b|\bexpress\b|petrochem|"
+    r"birds? sanctuary|feeding point|experimental|\bpaid\b|\bbest\b|cemetery(?!.*shelter)|playground|"
+    # places and businesses named after a gaushala: "GauShala More", "Goshala Bazar", "Goshala Auto Centre"
+    r"\bmore\b|\bmod\b|bazar|\bpara\b|\bbasti\b|ground|community hall|anganwadi|vidyalaya|public place|talab|"
+    r"muktimarg|motors|showroom|tollgate|creamery|water pump|milk|bhojnal|wellness|arogya|\bland\b|electrics|"
+    r"auto cent|baked|\bvihar\b|infocity|campus|\bmela\b|\bri office", re.I)
+# A street address or locality saved as the name: "1/13, Near Old Goshala", "Goshala Line".
+ADDRESS_NAME = re.compile(
+    r"^\d|^(gj|sh|nh)[ -]?\d|\b(room|plot|ward|house|flat|shop) ?no\b|\bbehind\b|\bline\b|\bmohalla\b|\bward\b|\bbass\b|"
+    r"\bplot\b", re.I)
+# Places that look like animal groups but are something else unless a gaushala.
+ANIMAL_HOUSE = re.compile(r"animal house", re.I)
+CARE_FOR = re.compile(r"care for (cows|animals|strays|dogs)", re.I)
+FARM = re.compile(r"\bfarms?\b", re.I)
 # ...and does not name something else that happens to use those words.
 NOT_ANIMAL_NGO = re.compile(
     r"loans?\b|finance|layout|residency|realty|builders?\b|developers?\b|construction|architect|guest ?house|"
     r"\boyo\b|paying guest|\bhotel|resort|convention|\bbus\b|book|gift|\bcave|rock shelter|pilgrim|yatri|"
-    r"training|husbandry|department|directorate|night shelter|homeless|women|nari|flood|cyclone|\bfire\b|"
+    r"training|husbandry|department|directorate|night shelter|homeless(?! animal)|women|nari|flood|cyclone|\bfire\b|"
     r"disaster|old ?age|orphan|child|\bboys\b|girls|rain basera|food shelter|dairy|\bmilk|meat|chicken|"
     r"poultry|\bfish|\bfeeds?\b|bird sanctuary|wildlife sanctuary|national park|tiger reserve|\bzoo\b|"
     r"\bforest\b|range office|museum|statue|\bsalon|grooming|kennel club|\bshow\b|cafe|\bfood\b|"
@@ -141,8 +178,19 @@ NOT_A_SHELTER = re.compile(
 
 def name_ok(name):
     n = name or ""
-    animal = ANIMAL_NAME.search(n) or (ANIMAL_WORD.search(n) and WELFARE_WORD.search(n))
-    return bool(animal) and not NOT_ANIMAL_NGO.search(n) and not NOT_A_SHELTER.search(n)
+    gaushala = GAUSHALA_NAME.search(n)
+    rescue = ANIMAL_WORD.search(n) and RESCUE_WORD.search(n)
+    group = (gaushala or NETWORK_NAME.search(n) or STRAYS_NAME.search(n) or CARE_FOR.search(n) or rescue
+             or (STRONG_ANIMAL_WORD.search(n) and NGO_WORD.search(n)))
+    if not group:
+        return False
+    if (NOT_A_GROUP.search(n) or NOT_ANIMAL_NGO.search(n) or NOT_A_SHELTER.search(n) or NOT_A_GROUP_NAME.search(n)
+            or ADDRESS_NAME.search(n)):
+        return False
+    if ANIMAL_HOUSE.search(n) and not gaushala:
+        return False  # college and lab animal houses
+    # A farm is a business unless it is also a gaushala, shelter or sanctuary.
+    return bool(gaushala or rescue) or not FARM.search(n)
 
 
 def ola_candidate(item):
@@ -202,23 +250,45 @@ def parse_items(data):
     return out
 
 
+def _phones_anywhere(obj, out, depth=0):
+    """Every value under a key that mentions phone, however deep Ola puts it."""
+    if depth > 4:
+        return
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if "phone" in str(k).lower() and isinstance(v, (str, int)):
+                t = str(v).strip()
+                if t and t.lower() not in EMPTY:
+                    n = norm_phone(t) or t
+                    if n not in out:
+                        out.append(n)
+            elif isinstance(v, (dict, list)):
+                _phones_anywhere(v, out, depth + 1)
+    elif isinstance(obj, list):
+        for v in obj:
+            _phones_anywhere(v, out, depth + 1)
+
+
 def parse_details(data):
     r = data.get("result") or data.get("place") or {}
+    if isinstance(r, list):
+        r = r[0] if r and isinstance(r[0], dict) else {}
     phones = []
     for k in ("formatted_phone_number", "international_phone_number", "phone", "phone_number"):
         if r.get(k) and str(r[k]).strip().lower() not in EMPTY:
             n = norm_phone(str(r[k])) or str(r[k]).strip()
             if n and n not in phones:
                 phones.append(n)
+    _phones_anywhere(r, phones)
     loc = (r.get("geometry") or {}).get("location") or {}
-    site = (r.get("website") or "").strip()
+    site = str(r.get("website") or r.get("url_website") or "").strip()
     if site.lower() in EMPTY or " " in site or "." not in site:
         site = ""
     elif not site.lower().startswith(("http://", "https://")):
         site = "https://" + site
     return {"name": (r.get("name") or "").strip(), "phones": phones, "website": site,
             "address": (r.get("formatted_address") or "").strip(),
-            "lat": loc.get("lat", ""), "lng": loc.get("lng", "")}
+            "lat": loc.get("lat", ""), "lng": loc.get("lng", ""), "keys": sorted(r.keys())}
 
 
 STRICT = {"on": True}  # keep results inside the radius; switched off if Ola rejects the option
@@ -268,9 +338,48 @@ def _search(http, key, term, usage, location="", radius=CENTRE_RADIUS):
     return parse_items(_get(http, "/autocomplete", params, key))
 
 
-def details(http, key, place_id, usage):
-    usage.take()
-    return parse_details(_get(http, "/details", {"place_id": place_id}, key))
+DETAIL_PATHS = ("/details", "/details/advanced")
+
+
+def details(http, key, place_id, usage, stats=None):
+    """Phone and website for one place. Basic details first; when that has no phone
+    or website, the advanced details (which carry contact fields) are asked too.
+    Answers are kept on disk for CACHE_DAYS so a monthly run does not pay twice."""
+    stats = stats if stats is not None else {}
+    ck = "ola-details|" + place_id
+    hit = _cache().get(ck)
+    if hit is not None:
+        stats["cached"] = stats.get("cached", 0) + 1
+        return hit
+    best = None
+    for path in DETAIL_PATHS:
+        usage.take()
+        try:
+            d = parse_details(_get(http, path, {"place_id": place_id}, key))
+        except OlaError as err:
+            stats[path + " error"] = stats.get(path + " error", 0) + 1
+            stats.setdefault("last error", str(err)[:200])
+            continue
+        stats[path + " ok"] = stats.get(path + " ok", 0) + 1
+        if d["phones"]:
+            stats[path + " with phone"] = stats.get(path + " with phone", 0) + 1
+        if best is None:
+            best = d
+        else:
+            best["phones"] = best["phones"] or d["phones"]
+            best["website"] = best["website"] or d["website"]
+            best["address"] = best["address"] or d["address"]
+        if best["phones"] and best["website"]:
+            break
+    if best is not None:
+        _cache().put(ck, best)
+    return best
+
+
+def _notice(text):
+    """A line the GitHub run page shows as a notice (and the API can read back)."""
+    if os.environ.get("GITHUB_ACTIONS"):
+        print("::notice::" + text.replace("\n", " "), flush=True)
 
 
 def sweep(http, key, cap=90000, only=None, log=print, workers=3, with_details=True, states=None):
@@ -315,34 +424,49 @@ def sweep(http, key, cap=90000, only=None, log=print, workers=3, with_details=Tr
         log("  Ola Maps stopped: {}".format(err))
 
     places = list(found.values())
-    if with_details and not info["stopped"]:
+    stats = {}
+    # Details run even when the search budget ran out: what is left of it goes to phones.
+    if with_details:
         log("  Ola Maps: reading details (phone, website) for {} places".format(len(places)))
 
         def det(p):
             if not p["id"]:
+                stats["no place id"] = stats.get("no place id", 0) + 1
                 return p, None
             try:
-                return p, details(http, key, p["id"], usage)
+                return p, details(http, key, p["id"], usage, stats)
             except (Budget, PermissionError):
                 raise
-            except Exception:
+            except Exception as err:
+                stats["failed"] = stats.get("failed", 0) + 1
+                stats.setdefault("last error", str(err)[:200])
                 return p, None
         try:
             with ThreadPoolExecutor(max_workers=workers) as pool:
                 for p, dt in pool.map(det, places):
                     # Ignore details that describe a different place.
                     if dt and dt.get("name") and token_overlap(dt["name"], p["name"]) < 0.6:
+                        stats["other place"] = stats.get("other place", 0) + 1
                         dt = None
                     if dt:
                         p["phones"] = dt["phones"]
                         p["website"] = dt["website"]
+                        if dt["phones"]:
+                            stats["places with phone"] = stats.get("places with phone", 0) + 1
                         if dt["address"] and len(dt["address"]) > len(p["address"]):
                             p["address"] = dt["address"]
                         p["lat"] = p["lat"] or dt["lat"]
                         p["lng"] = p["lng"] or dt["lng"]
         except Budget as err:
-            info["stopped"] = str(err)
+            info["stopped"] = (info["stopped"] + "; " if info["stopped"] else "") + "details: " + str(err)
             log("  Ola Maps details stopped: {}".format(err))
+    info["details"] = stats
+    summary = "Ola Maps details for {} places: {}".format(
+        len(places), ", ".join("{} {}".format(k, v) for k, v in sorted(stats.items())) or "none made")
+    log("  " + summary)
+    _notice(summary)
+    if info["stopped"]:
+        _notice("Ola Maps stopped early: " + info["stopped"])
 
     orgs = [to_org(p) for p in places]
     info.update(found=len(orgs), requests_this_month=usage.used)
@@ -385,6 +509,7 @@ CHECKS = [
      {"input": "gaushala", "radius": "40000", "strictbounds": "true"}, "Udupi"),
     ("same without strictbounds", "/autocomplete", {"input": "gaushala", "radius": "40000"}, "Udupi"),
     ("details for the first place found", "/details", {}, ""),
+    ("advanced details for the same place", "/details/advanced", {}, ""),
 ]
 
 
@@ -399,7 +524,7 @@ def check(http, key, log=print):
             params["location"] = "{},{}".format(lat, lon)
         elif where:
             params["location"] = _loc("Karnataka", where)
-        if path == "/details":
+        if path.startswith("/details"):
             if not first_id:
                 log("{}: skipped (nothing found to look up)".format(label))
                 continue
@@ -416,10 +541,13 @@ def check(http, key, log=print):
             body = resp.json()
         except ValueError:
             body = {}
-        if path == "/details":
+        if path.startswith("/details"):
             d = parse_details(body)
-            log("{}: HTTP {}, {} | phones {} | website {}".format(label, resp.status_code, d["name"] or "(no name)",
-                                                                ", ".join(d["phones"]) or "none", d["website"] or "none"))
+            line = "{}: HTTP {}, {} | phones {} | website {} | fields {}".format(
+                label, resp.status_code, d["name"] or "(no name)", ", ".join(d["phones"]) or "none",
+                d["website"] or "none", ",".join(d["keys"]) or (resp.text[:160] or "empty"))
+            log(line)
+            _notice(line)
             continue
         items = parse_items(body)
         kept = [it for it in items if ola_candidate(it)]

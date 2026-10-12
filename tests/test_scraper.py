@@ -520,6 +520,30 @@ class TestOla(unittest.TestCase):
         self.assertEqual(org.website, "")
         self.assertEqual(org.social, ["https://www.facebook.com/asareanimaltrust"])
 
+    def test_details_fall_back_to_advanced_for_phone(self):
+        basic = '{"status":"ok","result":{"name":"Asare Animal Trust","formatted_address":"Surathkal"}}'
+        advanced = ('{"status":"ok","result":{"name":"Asare Animal Trust",'
+                    '"contact":{"phone_numbers":{"primary_phone":"079751 24932"}},"website":"asare.org"}}')
+        http = FakeHttp({"/details/advanced": FakeResponse(advanced), "/details": FakeResponse(basic)})
+        stats = {}
+        usage = self.ola.Usage(100, path=self.ola.USAGE_FILE)
+        d = self.ola.details(http, "KEY", "p1", usage, stats)
+        self.assertEqual(d["phones"], ["+91 79751 24932"])
+        self.assertEqual(d["website"], "https://asare.org")
+        self.assertEqual(d["address"], "Surathkal")
+        self.assertEqual([u.split("/v1")[1] for u in http.calls], ["/details", "/details/advanced"])
+        self.assertEqual(stats["/details/advanced with phone"], 1)
+
+    def test_details_stop_at_basic_when_it_has_phone_and_website(self):
+        http = FakeHttp({"/details": FakeResponse(fixture("ola_details.json"))})
+        d = self.ola.details(http, "KEY", "p1", self.ola.Usage(100, path=self.ola.USAGE_FILE))
+        self.assertEqual(d["phones"], ["+91 79751 24932"])
+        self.assertEqual(len(http.calls), 1)
+
+    def test_sweep_reports_details_outcome(self):
+        orgs, info = self.ola.sweep(self.http(), "KEY", cap=2000, only=["Hassan"], log=lambda m: None, workers=1)
+        self.assertGreater(info["details"].get("places with phone", 0), 0)
+
     def test_sweep_filters_and_reads_details(self):
         orgs, info = self.ola.sweep(self.http(), "KEY", cap=2000, only=["Hassan"], log=lambda m: None, workers=1)
         names = sorted(o.name for o in orgs)
@@ -1014,6 +1038,34 @@ class TestOlaNames(unittest.TestCase):
     def test_shops_offices_vets_and_breeders_go(self):
         for n in self.DROP:
             self.assertFalse(ola_places.name_ok(n), n)
+
+    # Seen in the 12 Oct 2026 nationwide data: shops, places, clinics, labs, gyms,
+    # housing societies and government boards that the old filter let through.
+    JUNK_SEEN = ["Nandini Electonics", "New Kamadhenu Jewellery", "Nandica Bhasin Makeup Artist",
+                 "Jeevan Granites Crushing Unit", "Lakshmi Cow Mats", "56, Jeeva St", "Goshala Tailor",
+                 "Room No.1/4, Goshala Line 36 BN P.A.C", "GauShala More", "Goshala Auto Centre",
+                 "Goshala Bazar", "Goushala Community Hall", "Goshala Football Ground", "Goshalamilk.In",
+                 "Baked By Nini's - Panjrapole", "Kamdhenu Housing Society", "Blue Bird CoOperative Housing Society",
+                 "Sri Kamadhenu Credit Co Operative Society Limited", "Pashupatinath Society", "Free Bird Society",
+                 "Animal Gym", "Animal House Bits Pilani", "Animal Care", "Animal Care Centre",
+                 "Dr Chauhan Animal Care Centre", "Animal Planet", "Stray Factory Entertainment", "Stray Dogs Media",
+                 "Andhra Pradesh State Animal Welfare Board", "Vaduvoor Birds Sanctuary - Thiruvarur, TamilNadu",
+                 "Experimental Animal Shelter", "Yeshudas K9 Shelter - Paid Dog Shelter In Pune",
+                 "Monkey Catcher | Gargi Animal Care & Control Service Provider", "Sindhudurg Tourist Guide & Bird Watching Guide",
+                 "Govardhan Animal Farm", "SPCA Building", "Cargill Animal Nutrition", "Panjrapole GraveYard",
+                 "GauShala Swimming Pool", "Swami Teoonram GauShala Sindhu Sagar Co Op Socaity"]
+    REAL_GROUPS = ["CUPA - Compassion Unlimited Plus Action", "Homeless Animals Rescue Team", "Precious Paws Foundation",
+                   "The Voice of Stray Dogs", "Snake Rescue Team Bangalore", "Ahimsa Farm Animal Sanctuary",
+                   "Nityavan Farm House & Dog Shelter", "Planet Animal Trust", "Birol Govansh Sanrakshan Samiti",
+                   "Care For Cows Vrindavan", "Shree Patan Panjra Pole Animal House", "Empathy Unlimited Animal Welfare Foundation",
+                   "Wildlife Rescue & Rehabilitation Centre Jodhpur", "Murugan Snake Rescuer & Catcher Erode",
+                   "Animal Birth Control Centre (ABC), Kottayam", "Kamdhenu Gau Dhaam Trust"]
+
+    def test_only_welfare_groups_shelters_and_wildlife_groups(self):
+        for n in self.JUNK_SEEN:
+            self.assertFalse(ola_places.name_ok(n), n)
+        for n in self.REAL_GROUPS:
+            self.assertTrue(ola_places.name_ok(n), n)
 
     def test_live_map_listings_all_pass(self):
         with open(os.path.join(ROOT, "site", "data", "ngos.json"), encoding="utf-8") as fh:
