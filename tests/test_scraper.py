@@ -19,7 +19,7 @@ FIX = os.path.join(ROOT, "tests", "fixtures")
 from scraper import districts, enrich  # noqa: E402
 from scraper.classify import categories, looks_governmental  # noqa: E402
 from scraper.models import Org, merge  # noqa: E402
-from scraper.sources import awbi, osm, websearch  # noqa: E402
+from scraper.sources import awbi, ola_places, osm, websearch  # noqa: E402
 from scraper import lookup_page, people  # noqa: E402
 from scraper.text import clean, name_key  # noqa: E402
 
@@ -994,6 +994,32 @@ class TestRemoved(unittest.TestCase):
         kept = removed.keep([{"n": "Animal Rescue Center By Sudheendra Aithal", "k": [], "pp": [], "st": "Karnataka"},
                              {"n": "CUPA", "k": [], "pp": [], "st": "Karnataka"}])
         self.assertEqual([o["n"] for o in kept], ["CUPA"])
+
+
+class TestOlaNames(unittest.TestCase):
+    KEEP = ["Shree Jalaram Gau Seva Kendra Bhabhar", "Gau-Mata Seva Sadan", "Odisha Gau-Seva Samiti", "Gowardhan Gousala",
+            "Office Of The SPCA Kannur", "People For Animals Office", "Snake Rescue Team Bangalore", "Dog Rescue Point",
+            "Sri Raghavendra Gou Ashrama", "Shree Laxminaryan Gau Sanvardhan Charitable Trust", "Hope For Strays",
+            "Jeev Daya Welfare Society", "Shapar Gau Shala", "Raksha Animal Welfare Center", "Blue Cross Of Kanchipuram"]
+    DROP = ["Karuna Trust", "Kamadhenu Jewellers", "Nandi Sugar Factory Co-Gen Section", "Jeevan Jyoti Jatiya Vidyalaya",
+            "SRS Sea Bird Travels", "Cat Coaching In Chandigarh", "Rottweiler Dog", "Dog For Sale", "Happy Paw Dog Den",
+            "Pashu Seva Kendra", "Pashu Chikitsa Seva Kendra", "Animal Quarantine And Certification Services",
+            "Chhattisgarh Rajya Gau Seva Ayog", "Office Of The District Animal Husbandary Officer", "Baba Dog Farm",
+            "Cow Boy Bar", "Jeevan Bima Seva Kendra Baurasagar", "Krishna Advanced Pet CT", "Provimi Animal Nutrition India Pvt. Ltd."]
+
+    def test_names_that_are_animal_groups_stay(self):
+        for n in self.KEEP:
+            self.assertTrue(ola_places.name_ok(n), n)
+
+    def test_shops_offices_vets_and_breeders_go(self):
+        for n in self.DROP:
+            self.assertFalse(ola_places.name_ok(n), n)
+
+    def test_live_map_listings_all_pass(self):
+        with open(os.path.join(ROOT, "site", "data", "ngos.json"), encoding="utf-8") as fh:
+            orgs = json.load(fh)["orgs"]
+        bad = [o["n"] for o in orgs if o["src"] == ["Ola Maps"] and not ola_places.name_ok(o["n"])]
+        self.assertEqual(bad, [])
 
 
 class TestFederation(unittest.TestCase):

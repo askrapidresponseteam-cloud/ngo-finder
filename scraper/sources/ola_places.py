@@ -100,12 +100,22 @@ def plan(only=None, states=None):
     return out
 
 
-# A map listing is kept only if its name clearly says animals, cattle or wildlife...
+# A map listing is kept only if its name clearly says it is an animal group:
+# a word that only animal groups use (gaushala, animal, SPCA, jeev daya...)...
 ANIMAL_NAME = re.compile(
-    r"animal|fauna|compassion|cruelty|voiceless|humane|\bgau(?!rav|ri\b|tam)|\bgou|\bgow|go ?shala|gosala|goshal|gaushal|\bcows?\b|cattle|pinjra|panjra|pinjara|panjara|"
-    r"panjrapol|\bdogs?\b|\bcats?\b|\bbirds?\b|pashu|\bjeev|\bjiv|prani|wild ?life|snake|reptile|spca|"
-    r"people for animals|\bpfa\b|blue cross|stray|nandi|kam(a)?dhenu|bovine|\bpets?\b|paws|canine|horse|"
-    r"donkey|turtle|elephant|monkey|vulture|karuna|sarp|go ?seva|gau ?seva|gausadan|go ?sadan|go ?dham|gaudham", re.I)
+    r"animal|go ?shala|go ?sala|gou ?sala|gow ?sala|goshal|gau ?shala|gaushal|gausala|gaushaala|gow ?shala|gowshal|gou ?shala|goushal|"
+    r"pinjra|panjra|pinjara|panjara|\b(gau|go|gou|gow)[ -]?(seva|sewa|sadan|dham|raksha|rakshan|mata|ashram|ashrama|aashram|sanvardhan|samvardhan|sanrakshan|palan|nivas)|gausadan|gaudham|gaumata|"
+    r"\bjee?v ?(daya|raksha)|\bjiv ?(daya|raksha)|jivdaya|jeevdaya|\bprani\b|prani ?(daya|mitra|seva|kalyan)|wild ?life|\bspca\b|"
+    r"people for animals|\bpfa\b|blue cross|\bstray|voiceless|cruelty|humane|fauna|compassion", re.I)
+# ...or an animal word (dog, cow, bird...) together with a welfare word (rescue,
+# shelter, trust, seva...). Names like Karuna, Nandi, Kamadhenu or Jeevan alone are
+# mostly shops, schools and homes, so they never count on their own.
+ANIMAL_WORD = re.compile(
+    r"\bdogs?\b|\bcats?\b|\bbirds?\b|\bcows?\b|cattle|\bpets?\b|\bpaws?\b|canine|feline|horses?\b|donkeys?\b|turtles?\b|"
+    r"elephants?\b|monkeys?\b|vultures?\b|snakes?\b|reptiles?\b|\bsarp|\bpashu|bovine|kam(a)?dhenu", re.I)
+WELFARE_WORD = re.compile(
+    r"rescue|shelter|welfare|trust\b|foundation|society|sanstha|samiti|\bsangh|\bseva\b|\bsewa\b|\bcare\b|"
+    r"sanctuary|haven|adoption|\bngo\b|rehab|feeding|protection|raksha|daya\b|kalyan|mitra|ashray|aashray|refuge", re.I)
 # ...and does not name something else that happens to use those words.
 NOT_ANIMAL_NGO = re.compile(
     r"loans?\b|finance|layout|residency|realty|builders?\b|developers?\b|construction|architect|guest ?house|"
@@ -120,8 +130,19 @@ NOT_ANIMAL_NGO = re.compile(
     r"\bdairy|ghee|panchgavya|gobar|\bgas\b|photo|studio|tattoo|school|academy", re.I)
 
 
+# Government offices and labs, vets, breeders, pet businesses and other services.
+NOT_A_SHELTER = re.compile(
+    r"for sale|\bsale\b|breeder|breeding|puppies|kennel|boarding|day ?care|hostel|grooming|salon|spa\b|"
+    r"veterinary|\bvet\b|\bvets\b|chikitsa|aspatal|pashu ?(seva|sewa) ?kendra|bima seva|kisan seva|jan seva|rajkiya|government|\bgovt\b|"
+    r"quarantine|certification|\bayog\b|commission|officer|director|husbandary|investigation|laboratory|\blab\b|"
+    r"(welfare|reserve) office\b|garbhadhan|insemination|watering|"
+    r"\bltd\b|\bpvt\b|private limited|\bllp\b|pharma|medical|diagnostic|ayurved|homeo|nursing|"
+    r"pet ?(clinic|hospital|care center|care centre|ct\b|scan|lab)|\bclinic\b|\bhospital\b(?!.*(animal|rescue|trust|welfare|gau|go ?shala))", re.I)
+
 def name_ok(name):
-    return bool(ANIMAL_NAME.search(name or "")) and not NOT_ANIMAL_NGO.search(name or "")
+    n = name or ""
+    animal = ANIMAL_NAME.search(n) or (ANIMAL_WORD.search(n) and WELFARE_WORD.search(n))
+    return bool(animal) and not NOT_ANIMAL_NGO.search(n) and not NOT_A_SHELTER.search(n)
 
 
 def ola_candidate(item):
