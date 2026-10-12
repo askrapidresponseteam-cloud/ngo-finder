@@ -40,6 +40,13 @@ const store = {
   },
   reports: { r1: { target: "awbi-ka064-2014", targetName: "Amruthadhara Gaushala", reason: "wrong", text: "Phone number is old", status: "open", email: "x@example.org", createdAt: now() } },
   coordinators: { "cora@example.org": { state: "Karnataka", district: "Udupi", name: "Cora" } },
+  checks: { "awbi-ka004-1993_zed": { gid: "awbi-ka004-1993", uid: "zed", ok: true, why: "", at: T(Date.now() - 864e5) } },
+  comments: {
+    "awbi-ka004-1993_zed": { gid: "awbi-ka004-1993", gname: "Compassion Unlimited Plus Action", state: "Karnataka", district: "Bengaluru Urban",
+      uid: "zed", name: "Zed", text: "Called the rescue line at 8 pm, they picked up and sent the ambulance.", contact: "", status: "approved", at: T(Date.now() - 864e5) },
+    "awbi-ka064-2014_zed": { gid: "awbi-ka064-2014", gname: "Amruthadhara Gaushala", state: "Karnataka", district: "Udupi",
+      uid: "zed", name: "Zed", text: "The number on the AWBI list is old.", contact: "+91 90000 11111", status: "pending", at: now() }
+  },
   audit: [],
   public: { verified: { "awbi-ka004-1993": { n: "Compassion Unlimited Plus Action" } } }
 };
@@ -96,5 +103,12 @@ export const mock = {
   async coordinators() { return list(store.coordinators); },
   async setCoordinator(email, state, district, name) { store.coordinators[email] = { state, district, name }; log("coordinator", email, state); },
   async removeCoordinator(email) { delete store.coordinators[email]; log("coordinator removed", email, ""); },
+  async checksFor(gid) { return list(store.checks).filter((c) => c.gid === gid); },
+  async check(gid, ok, why) { store.checks[gid + "_" + user.uid] = { gid, uid: user.uid, ok, why: ok ? "" : why, at: now() }; },
+  async commentsFor(gid) { return list(store.comments).filter((c) => c.gid === gid && c.status === "approved"); },
+  async myComment(gid) { const id = gid + "_" + user.uid; return store.comments[id] ? Object.assign({ id }, store.comments[id]) : null; },
+  async comment(o, text, contact) { store.comments[o.gid + "_" + user.uid] = { gid: o.gid, gname: o.name, state: o.state, district: o.district, uid: user.uid, name: "Alice", text, contact, status: "pending", at: now() }; },
+  async pendingComments() { return list(store.comments).filter((c) => c.status === "pending"); },
+  async moderate(c, status, note) { Object.assign(store.comments[c.id], { status, modBy: user.uid, modAt: now(), modNote: note }); },
   async auditLog() { return store.audit; }
 };

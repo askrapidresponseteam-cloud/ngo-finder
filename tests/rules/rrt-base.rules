@@ -1,0 +1,387 @@
+rules_version = '2';
+
+// ============================================================================
+// RRT Firestore Security Rules
+//
+// Mobile clients sign in to Firebase Auth anonymously (silent, free). Each
+// install (Firebase Installation ID, "FID") is bound to one sign-in by the
+// backend (app_security.js, install_owners/{fid}), and chats carry the
+// sign-ins of their participants in member_uids: a chat is readable only by
+// those sign-ins and by super admins (verified email).
+//
+// TRANSITION: app versions before 2.19 read chats without a sign-in. While
+// app_config/security is missing or has legacy_app_access != false, chat
+// reads stay open as before. A super admin turns legacy access off in the
+// console (Security) once 2.19 is live in both stores; from then on only the
+// rules below by sign-in apply. User records (subscribed_users) are closed
+// now, transition or not: every user's number and push token was readable.
+//
+// The admin dashboard is Firebase Auth: a VERIFIED email whose admins record
+// is ACTIVE (an unverified email proves nothing: anyone can create an account
+// with an address that is not theirs; a suspended or removed admin's token
+// stays valid for up to an hour, so the record decides, not the token).
+//
+// Architecture: photo and voice URLs are NEVER written by the mobile
+// client - the client uploads bytes to Firebase Storage, gets a URL,
+// and POSTs it to /sos/attach-photo or /sos/attach-voice on the
+// backend, which writes via admin SDK. So sos_alerts.write stays
+// closed - this is intentional and the rules below assume it.
+//
+// Pre-deploy: run `firebase firestore:rules:get` and review the diff
+// before pushing. A manual edit in the Console would be silently
+// overwritten by `firebase deploy --only firestore:rules`.
+// ============================================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Admin identity: a VERIFIED email whose admins record is ACTIVE (the
+    // same test the backend applies on every request, admin_auth.js). The
+    // Auth custom claim is NOT trusted on its own: it outlives a removal until
+    // the token expires (up to an hour), so a suspended or removed admin would
+    // keep access. Reading the record means a change applies to the very next
+    // request. Defined at this scope so every match can use it.
+    function emailVerified() {
+      return request.auth != null
+          && request.auth.token.get('email_verified', false) == true
+          && request.auth.token.get('email', '') != '';
+    }
+    function adminRecordActive(d) {
+      return d.get('active', true) != false
+          && !(d.get('status', 'active') in ['suspended', 'revoked']);
+    }
+    function isSuperAdminTop() {
+      return emailVerified()
+          && exists(/databases/$(database)/documents/admins/$(request.auth.token.email))
+          && get(/databases/$(database)/documents/admins/$(request.auth.token.email)).data.get('role', '') == 'super-admin'
+          && adminRecordActive(get(/databases/$(database)/documents/admins/$(request.auth.token.email)).data);
+    }
+    // The transition switch (see the header). Missing document = legacy on.
+    function legacyAccess() {
+      return !exists(/databases/$(database)/documents/app_config/security)
+          || get(/databases/$(database)/documents/app_config/security).data.get('legacy_app_access', true) != false;
+    }
+    // The signed-in phone is a participant of this chat.
+    function isChatMember() {
+      return request.auth != null
+          && request.auth.uid in resource.data.member_uids;
+    }
+    // The signed-in phone owns this install (app_security.js binding).
+    function ownsInstall(fid) {
+      return request.auth != null
+          && fid is string
+          && exists(/databases/$(database)/documents/install_owners/$(fid))
+          && get(/databases/$(database)/documents/install_owners/$(fid)).data.get('uid', '') == request.auth.uid;
+    }
+
+    // ---- SOS alerts ------------------------------------------------------
+    // Read: open. Mobile clients aren't authenticated, but they still need
+    // to see alerts in their district to render the alerts list, the chat
+    // archive state, the seen-by count on their own alert, etc.
+    //
+    // Write: backend-only. The backend's storeSOSAlert creates the doc,
+    // /sos/mark-seen updates seen_by, /sos/attach-photo updates
+    // photo_urls, /sos/attach-voice updates voice_url, /chat/initiate
+    // updates responder_ids. The client never writes here directly.
+    // Live alerts only: a list must ask for active == true (the app, the
+    // console and the website all do), so nobody can page through everyone
+    // who ever raised an alert. One alert by id stays readable (a phone
+    // watches its own and its chat partner's); an ended alert no longer holds
+    // a name, number, message or location (endedAlertPatch in index.js).
+    // During the transition older apps keep their old queries.
+    match /sos_alerts/{alertId} {
+      allow get: if true;
+      allow list: if resource.data.active == true || legacyAccess();
+      allow write: if false;
+    }
+
+    // Subcollections under sos_alerts (none exist today; future-proofed).
+    match /sos_alerts/{alertId}/{subcollection}/{docId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // ---- SOS alert history -----------------------------------------------
+    // Append-only audit log written by the backend; client never touches it.
+    // Admin dashboard reads it via admin SDK.
+    match /sos_alert_history/{historyId} {
+      allow read, write: if false;
+    }
+
+    // ---- Conversations (chat) --------------------------------------------
+    // Read: the sign-ins of the chat's participants (member_uids, written by
+    // the backend from the install bindings), super admins (verified email;
+    // district admins work through the backend, which scopes them), and,
+    // during the transition only, anyone (legacy access). The app queries
+    // where('member_uids', 'array-contains', uid), which is what lets the
+    // list rule be proven. Reading a chat that does not exist reveals
+    // nothing, so it is allowed (the app listens before a chat is created).
+    //
+    // Write: backend-only via /chat/initiate and /chat/send-message.
+    // Daily wipe runs as a scheduled Cloud Function (admin SDK).
+    match /sos_conversations/{convId} {
+      allow get: if resource == null || legacyAccess() || isSuperAdminTop() || isChatMember();
+      allow list: if legacyAccess() || isSuperAdminTop() || isChatMember();
+      allow write: if false;
+    }
+
+    // ---- District Asks (non-emergency requests) --------------------------
+    // Read: open. Clients filter by district client-side to render the
+    // "Ask the district" feed. Same threat model as sos_alerts read - the
+    // data isn't private (asks are explicitly published to a district).
+    //
+    // Write: backend-only via /ask/create. Increments to response_count
+    // are also backend-only via /ask/respond.
+    match /district_asks/{askId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // ---- District stats (responder-count projection) ---------------------
+    // Read-only aggregate: counts per district, no PII, no FIDs. Clients
+    // listen to their own district's doc instead of polling an endpoint that
+    // scanned the whole roster every 60s.
+    // Write: backend only, via the syncDistrictStats triggers. Never a client,
+    // or the badge could be forged to claim responders that do not exist.
+    match /district_stats/{district} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // ---- Ask conversations (responder <-> asker private chat) ------------
+    // Same model as sos_conversations: members, super admins, and legacy
+    // access during the transition. Backend-only writes via /ask/respond and
+    // /ask/chat/send-message.
+    match /ask_conversations/{convId} {
+      allow get: if resource == null || legacyAccess() || isSuperAdminTop() || isChatMember();
+      allow list: if legacyAccess() || isSuperAdminTop() || isChatMember();
+      allow write: if false;
+    }
+
+    // ---- Post-SOS feedback -----------------------------------------------
+    // The client writes feedback directly. Doc ID is composite
+    // `{senderId}_{activatedAtMillis}` so a malicious caller can't
+    // displace someone else's feedback (they'd need to know both halves).
+    // Read: closed - admin dashboard reads via admin SDK only.
+    //
+    // Note: this is the post-SOS feedback (rating, help-arrived, comment),
+    // distinct from the help/contact form (which uses POST /feedback to
+    // send an email). Two different features that share a confusing name.
+    // Validated: only the fields the app writes, bounded sizes, and the id
+    // must be the sender id and time it claims. A signed-in phone (or any
+    // phone during the transition).
+    match /sos_feedback/{docId} {
+      // Only the phone that owns the install (or any phone during the
+      // transition) may file or change that install's feedback.
+      allow create, update: if (legacyAccess() || ownsInstall(request.resource.data.sender_id))
+          && request.resource.data.keys().hasOnly(['sender_id', 'activated_at_millis', 'rating',
+               'help_arrived', 'response_speed', 'outcome', 'comment', 'sender_name',
+               'mobile_number', 'submitted_at'])
+          && request.resource.data.sender_id is string
+          && request.resource.data.activated_at_millis is int
+          && docId == request.resource.data.sender_id + '_' + string(request.resource.data.activated_at_millis)
+          && request.resource.data.rating is int
+          && request.resource.data.rating >= 0 && request.resource.data.rating <= 10
+          && request.resource.data.help_arrived is string && request.resource.data.help_arrived.size() <= 40
+          && (!('response_speed' in request.resource.data) || (request.resource.data.response_speed is string && request.resource.data.response_speed.size() <= 40))
+          && (!('outcome' in request.resource.data) || (request.resource.data.outcome is string && request.resource.data.outcome.size() <= 40))
+          && (!('comment' in request.resource.data) || (request.resource.data.comment is string && request.resource.data.comment.size() <= 2000))
+          && (!('sender_name' in request.resource.data) || (request.resource.data.sender_name is string && request.resource.data.sender_name.size() <= 200))
+          && (!('mobile_number' in request.resource.data) || (request.resource.data.mobile_number is string && request.resource.data.mobile_number.size() <= 40));
+      allow read, delete: if false;
+    }
+
+    // ---- Subscribed users ------------------------------------------------
+    // Every user's name, mobile number and push token: never public, not
+    // even during the transition. A phone reads only its OWN record
+    // (owner_uid = its sign-in: set when the backend binds the install, and
+    // by /link-identity in 2.1x); the responder list comes from
+    // GET /district-responder-names (names only). Super admins may read
+    // (the console lists users through the backend).
+    //
+    // Write: closed. The backend's /subscribe-user is the only writer,
+    // and /delete-user-data is the only deleter.
+    match /subscribed_users/{fid} {
+      allow get: if resource == null || isSuperAdminTop()
+          || (request.auth != null && resource.data.get('owner_uid', '') == request.auth.uid);
+      allow list: if isSuperAdminTop();
+      allow write: if false;
+    }
+
+    // ---- App security (app_security.js): backend-only ---------------------
+    // install_owners: which sign-in each install is bound to. security_events:
+    // refused links (claimed / unproven installs). sos_expiry_tasks: hashes
+    // of the one-time secrets the SOS expiry tasks carry.
+    match /install_owners/{fid}      { allow read, write: if false; }
+    match /security_events/{eventId} { allow read, write: if false; }
+    match /sos_expiry_tasks/{fid}    { allow read, write: if false; }
+    // Messages of a thread with the RRT team that no longer fit the thread
+    // (admin_messaging.js): kept, never deleted, backend-only.
+    match /admin_thread_archive/{id} { allow read, write: if false; }
+
+    // ---- Admins ----------------------------------------------------------
+    // Authenticated admins only. Super admins (custom claim) can manage
+    // others; regular admins can read their own doc.
+    // Read: super admins, and each admin their own record (the console
+    // watches it and signs out the moment access is suspended or removed).
+    // Write: nobody from a browser. Every grant, change, suspension and
+    // removal goes through the backend (POST/PUT /admin/admins...), which
+    // checks the caller, protects the last super admin, ends sessions and
+    // writes the audit trail in the same transaction.
+    match /admins/{email} {
+      allow read: if isSuperAdminTop() || (emailVerified() && request.auth.token.email == email);
+      allow write: if false;
+    }
+    // Admin audit trail (admin_auth.js, settings, SOS stops): backend-only;
+    // the console reads it through GET /admin/admins/audit.
+    match /admin_audit/{id} { allow read, write: if false; }
+    // Durable rate-limit windows (lib/security.js): backend-only.
+    match /rate_limits/{id} { allow read, write: if false; }
+
+    // ---- Blocked users ---------------------------------------------------
+    // Backend-only via /admin/block-user and /admin/unblock-user.
+    match /blocked_users/{document} {
+      allow read, write: if false;
+    }
+
+    // ---- App config --------------------------------------------------------
+    // Clients may READ exactly two documents:
+    //   flags  - feature on/off switches (kill switches). The app listens to
+    //            this doc so a flipped flag hides or pauses a feature on
+    //            running installs within seconds. Booleans only; nothing secret.
+    //   text   - editable copy (maintenance message, support email, notices).
+    //
+    // Everything else stays backend-only:
+    //   policy - contains moderation.blocked_terms and auto-hide thresholds;
+    //            publishing those would hand spammers the evasion list.
+    //   system - operational settings.
+    //   version - read by the /app-version endpoint via the admin SDK.
+    //
+    // Before this change the whole collection was closed, so the app's
+    // AppConfig listener was denied and every client-side flag silently fell
+    // back to its compiled default (flags.store included).
+    //
+    // Nobody writes from a client. Edits happen in the console or via admin
+    // tooling, and every change is snapshotted to config_versions by the
+    // auditConfigChanges function.
+    // ---- RRT shop orders (backend-only) ----------------------------------
+    // Ledger of Pets Lifestyle orders placed through the app, written only by
+    // the signed Shopify webhook and reconciliation (store_orders.js), read
+    // only through /admin/store/orders. No customer data is stored.
+    match /store_rrt_orders/{orderId} {
+      allow read, write: if false;
+    }
+    match /store_integration/{doc} {
+      allow read, write: if false;
+    }
+
+    // Partner store (store_config.js): the published config is public and
+    // written only by the backend; vendors and the audit trail are backend-only.
+    match /store_vendors/{doc} {
+      allow read, write: if false;
+    }
+    match /store_config_versions/{doc} {
+      allow read, write: if false;
+    }
+
+    match /app_config/{document} {
+      // 'store' is readable by every client and never writable from one: only
+      // store_config.js (admin SDK) publishes it, after validation and audit.
+      allow read: if document in ['flags', 'text', 'store'];
+      // The Store and Features tabs write these two from the browser (an
+      // active super admin). The write must name its author: _modified_by is
+      // the caller's own email, so the audit trail (auditConfigChanges ->
+      // config_versions) cannot be attributed to someone else.
+      // policy/system stay backend-only (PUT /admin/settings/:key).
+      allow write: if isSuperAdminTop() && document in ['flags', 'text']
+          && request.resource.data.get('_modified_by', '') == request.auth.token.email;
+    }
+
+    // ---- SOS stop tokens (backend-only) ----------------------------------
+    // Stores ONLY the SHA-256 hash of each SOS's one-time stop token, keyed
+    // by sender FID. Written by the /sos raise handler, verified and deleted
+    // by the /sos stop handler, both via the admin SDK. Never readable or
+    // writable by clients - exposing the hash would leak nothing useful, but
+    // there is no reason for a client to touch it.
+    match /sos_stop_tokens/{fid} {
+      allow read, write: if false;
+    }
+
+    // ---- Identity map (backend-only) -------------------------------------
+    // Reverse map of Firebase Auth UID -> installation FID, written by
+    // /link-identity via the admin SDK during the FID->UID migration.
+    // Backend-only; clients never read or write it.
+    match /identity_map/{uid} {
+      allow read, write: if false;
+    }
+
+    // ---- Moderation log (all writes via the api function) ------------------
+    //
+    // Reads are DENIED to every client, including the reporter who filed the
+    // row. The admin console reads these over HTTPS with a verified ID token,
+    // where district scoping and reporter-identity stripping are enforced in
+    // moderation.js. A client-side read would leak who reported whom, which
+    // is precisely the information that gets a reporter harassed.
+    //
+    // Nothing here is TTL'd. `reports` is the platform's permanent compliance
+    // log; the only path that destroys a row is DELETE /admin/reports/:id,
+    // which requires a super admin and an explicit confirm token, and which
+    // writes its own audit event.
+    match /reports/{reportId} {
+      allow read, write: if false;
+    }
+
+    match /moderation_targets/{targetId} {
+      allow read, write: if false;
+    }
+
+    match /report_pairs/{pairId} {
+      allow read, write: if false;
+    }
+
+    match /user_report_stats/{fid} {
+      allow read, write: if false;
+    }
+
+    // Append-only. Not even a super admin edits or deletes an audit event -
+    // a log you can rewrite is not a log. Enforced here AND by the absence of
+    // any update/delete route in moderation.js.
+    match /moderation_events/{eventId} {
+      allow read, write: if false;
+    }
+
+    // ---- VET CONSULTATION -------------------------------------------------
+    // Vets sign in with mobile/registration no. + PIN; the backend then binds
+    // that install's Firebase UID to the vet record (vet_identity.js). Rules
+    // can't see that binding, so ALL vet and consult data is backend-only
+    // (admin SDK, vetConsult function). Clients never read these directly.
+    // Public lean vet card (NO payment/UPI, NO verification docs here).
+    match /vets/{vetId}            { allow read, write: if false; }
+    // Payment VPA + pending change, PIN hash/lockout, sessions, audit, verif docs.
+    match /vet_payment/{vetId}     { allow read, write: if false; }
+    match /vet_verifications/{vetId}{ allow read, write: if false; }
+    match /vet_auth_state/{vetId}  { allow read, write: if false; }
+    match /vet_sessions/{sessionId}{ allow read, write: if false; }
+    match /vet_audit/{entryId}     { allow read, write: if false; }
+    // Consult request (atomic claim) + consult chat: backend-only. The app
+    // reads them through GET /consult/... which checks the caller's verified
+    // identity; writes go through the claim transaction and handlers only.
+    match /consult_requests/{requestId}    { allow read, write: if false; }
+    match /vet_consultations/{consultId}   { allow read, write: if false; }
+    // A vet's own dashboard numbers (vet_stats.js): served only by GET /vet/stats.
+    match /vet_stats/{vetId}               { allow read, write: if false; }
+    // Consultation photo cleanup jobs (consult_photos.js): backend-only.
+    match /consult_photo_cleanup/{consultId} { allow read, write: if false; }
+    match /consult_active_by_user/{fid}    { allow read, write: if false; }
+    match /vet_applications/{uid}           { allow read, write: if false; }
+    match /vet_reg_index/{regKey}           { allow read, write: if false; }
+    // No-SMS identity (vet_identity.js): mobile index, install bindings, PIN
+    // recovery codes, login throttles. Already denied by default; explicit here.
+    match /vet_mobile_index/{mobile}        { allow read, write: if false; }
+    match /vet_device_bindings/{uid}        { allow read, write: if false; }
+    match /vet_recovery/{vetId}             { allow read, write: if false; }
+    match /vet_login_attempts/{key}         { allow read, write: if false; }
+    match /vet_throttle/{key}               { allow read, write: if false; }
+
+  }
+}

@@ -142,7 +142,6 @@ mark{background:var(--wash);border-radius:0}
   .shell.embed{padding:0 0 24px}
   .intro{display:flex;flex-direction:column;align-items:stretch;gap:14px;margin:24px 0 16px}
   .tools{display:flex}
-  .tools .pill.blue{flex:1;justify-content:center}
   h1{font-size:36px}
   .eyebar{flex-direction:column;align-items:flex-start;gap:0}
   .eyebrow{padding-bottom:4px}
@@ -151,3 +150,54 @@ mark{background:var(--wash);border-radius:0}
   .head{padding:16px 6px 16px 2px}
   .detail{padding:0 6px 20px 2px}
 }
+
+/* the easy way in, contacts on every row */
+.finder{gap:8px;margin:0 0 24px}
+.finder select{height:48px;border-radius:0;border:1px solid var(--line2);background:var(--white);font:600 14px/1 var(--sans);padding:0 14px}
+.finder select:focus{border-color:var(--ink);box-shadow:0 0 0 1px var(--ink)}
+.pill.dark{background:var(--ink);color:var(--white);border-color:var(--ink);height:48px;padding:0 20px;font:700 13px/1 var(--disp);letter-spacing:.09em;text-transform:uppercase}
+.pill.dark:hover{background:var(--sg-ink-hover,#2A2A2C)}
+.quick{padding:0 12px 16px 4px;margin-top:-8px;gap:6px}
+.qc{border-radius:0;border:1px solid var(--line2);background:var(--white);height:36px;padding:0 12px;font:600 13px/1 var(--sans);color:var(--ink)}
+.qc:hover{border-color:var(--ink)}
+.qc.call{background:var(--ink);border-color:var(--ink);color:var(--white)}
+.addr{font-size:14px;color:var(--graphite)}
+.fbq{font-size:14px}
+.fbq a{color:var(--link);font-weight:700}
+.tools{flex-wrap:wrap}
+.tools .pill:not(.blue){height:48px;font:700 13px/1 var(--disp);letter-spacing:.09em;text-transform:uppercase;padding:0 18px}
+@media (max-width:650px){
+  .quick{padding:0 6px 14px 2px}
+}
+
+/* embedded header: where (near me, state, district) and search, then type and tools */
+.top{margin:0 0 14px}
+.finderslot{flex:1 1 auto;min-width:0}
+.finderslot .finder{margin:0}
+.subbar{display:flex;align-items:center;justify-content:space-between;gap:12px 20px;margin:0 0 22px;flex-wrap:wrap}
+.subbar .types{flex:1 1 auto;min-width:0}
+.intro{margin:30px 0 20px}
+@media (max-width:650px){
+  .top{flex-direction:column;flex-wrap:nowrap;align-items:stretch;gap:8px}
+  .finder{gap:8px}
+  .finder .near{flex:0 0 auto;padding:0 16px}
+  .finder select{flex:1 1 0;min-width:0}
+  .finder select + select{flex-basis:100%}
+  .subbar{flex-wrap:nowrap;gap:8px;margin-bottom:16px}
+  .subbar .types{overflow-x:auto;flex-wrap:nowrap}
+  .tools{flex-wrap:nowrap;gap:6px}
+  .tools .tl{display:none}
+  .tools .round,.tools .pill,.tools .pill.blue{width:44px;height:44px;padding:0;justify-content:center;flex:0 0 auto}
+}
+
+/* did you reach them? and comments */
+.fbask .pill{height:40px;padding:0 16px;font:700 12px/1 var(--disp);letter-spacing:.09em;text-transform:uppercase}
+.fbask .pill[aria-pressed="true"]{background:var(--ink);color:var(--white);border-color:var(--ink)}
+.fbask .fbq{font-weight:700;color:var(--ink);margin-right:4px}
+.fbtally{font:500 11px/1.3 var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.fbslot .pill{height:40px;padding:0 14px;font-size:13px}
+.fbslot .pill.dark{height:44px}
+.fbslot input,.fbslot textarea{border-radius:0;border:1px solid var(--line2)}
+.comment{border-radius:0;background:var(--bg);font-size:14px}
+.cmeta{font:500 11px/1.4 var(--mono);letter-spacing:.06em;text-transform:uppercase}
+.more-toggle{margin-top:4px}

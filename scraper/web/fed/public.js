@@ -1,7 +1,8 @@
 // Federation add-ons for the public directory: Verified badges, capacity,
-// open needs (items and help only, never money), claim and report links.
+// open needs (items and help only, never money), claim and report links,
+// "Did you reach them?" and comments (checked by an admin before they show).
 import { backend } from "./api.js";
-import { el, NEED_KINDS, fmtDate } from "./common.js";
+import { el, clear, toast, errText, moneyIn, NO_MONEY, NEED_KINDS, fmtDate } from "./common.js";
 
 const KIND = Object.fromEntries(NEED_KINDS);
 // The portal sits next to this folder, wherever the directory is served from.
@@ -11,9 +12,37 @@ const INTAKE = { open: "Taking animals in", limited: "Limited space", full: "Ful
 export async function attach() {
   const B = await backend();
   if (!B) return null;
-  let index = { verified: {} };
-  try { index = await B.publicIndex(); } catch (e) { /* show the directory without badges */ }
+  let index;
+  // Refused until the rules are published (or offline): the directory then
+  // runs on its own, with the plain "Tell us" link.
+  try { index = await B.publicIndex(); } catch (e) { return null; }
   const verified = index.verified || {};
+  try { await B.finishLink(); } catch (e) { /* not a sign-in link */ }
+  let me = B.user();
+  B.onUser((u) => { me = u; });
+
+  const WHY = [["no_answer", "No answer"], ["wrong_number", "Wrong number"], ["email_bounced", "Email bounced"],
+    ["closed", "Closed down"], ["other", "Something else"]];
+  const ms = (t) => (t && t.toMillis ? t.toMillis() : 0);
+
+  // Sign in once (Google, or a link by email), so each answer is one real person.
+  function signIn(slot, then) {
+    if (me) { then(); return; }
+    clear(slot);
+    const mail = el("input", { type: "email", placeholder: "Your email", autocomplete: "email", "aria-label": "Your email" });
+    slot.append(
+      el("p", { cls: "fbq", text: "Sign in once, so every answer comes from a real person. We never show your email." }),
+      el("div", { cls: "row-actions" }, [
+        el("button", { cls: "pill dark", type: "button", text: "Continue with Google", on: { click: async () => {
+          try { await B.signInGoogle(); me = B.user(); clear(slot); then(); } catch (e) { toast(errText(e)); } } } }),
+        mail,
+        el("button", { cls: "pill", type: "button", text: "Email me a link", on: { click: async () => {
+          const v = mail.value.trim();
+          if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)) { toast("Enter your email address."); return; }
+          try { await B.sendLink(v); clear(slot).appendChild(el("p", { cls: "fbq", text: "Check " + v + " for the sign-in link, then answer again." })); }
+          catch (e) { toast(errText(e)); } } } })
+      ]));
+  }
 
   function needItem(n, withGroup, go) {
     return el("li", { cls: "need" + (n.urgent ? " urgent" : "") }, [
@@ -27,6 +56,77 @@ export async function attach() {
 
   return {
     verified,
+
+    // In a group's details, under its contacts: did the contacts work, and comments.
+    feedback(box, o) {
+      const gid = o._id;
+      const tally = el("span", { cls: "fbtally" });
+      const slot = el("div", { cls: "fbslot" });
+      const list = el("ul", { cls: "comments" });
+      const yes = el("button", { cls: "pill", type: "button", text: "Yes" });
+      const no = el("button", { cls: "pill", type: "button", text: "No" });
+      box.append(el("div", { cls: "fbask" }, [el("span", { cls: "fbq", text: "Did you reach them?" }), yes, no, tally]), slot);
+
+      function count() {
+        B.checksFor(gid).then((all) => {
+          const ok = all.filter((c) => c.ok).length, bad = all.length - ok;
+          const last = all.reduce((m, c) => Math.max(m, ms(c.at)), 0);
+          tally.textContent = all.length
+            ? [ok ? ok + " reached them" : "", bad ? bad + " could not" : ""].filter(Boolean).join(", ") + (last ? " (latest " + fmtDate(new Date(last)) + ")" : "")
+            : "";
+          const mine = me && all.find((c) => c.uid === me.uid);
+          yes.setAttribute("aria-pressed", String(!!(mine && mine.ok)));
+          no.setAttribute("aria-pressed", String(!!(mine && !mine.ok)));
+        }).catch(() => {});
+      }
+      async function save(ok, why) {
+        try { await B.check(gid, ok, why); clear(slot); toast("Thanks. That helps the next person."); count(); }
+        catch (e) { toast(errText(e)); }
+      }
+      yes.addEventListener("click", () => signIn(slot, () => save(true, "")));
+      no.addEventListener("click", () => signIn(slot, () => {
+        clear(slot).append(el("p", { cls: "fbq", text: "What happened?" }),
+          el("div", { cls: "row-actions" }, WHY.map(([k, l]) => el("button", { cls: "pill", type: "button", text: l, on: { click: () => save(false, k) } }))));
+      }));
+      count();
+
+      // Comments: approved ones for everyone, plus your own while it waits.
+      const add = el("button", { cls: "more-toggle", type: "button", text: "+ Add a comment or a working number" });
+      box.append(el("div", { cls: "sec", text: "Comments" }), list, add);
+      function draw() {
+        Promise.all([B.commentsFor(gid).catch(() => []), me ? B.myComment(gid).catch(() => null) : null]).then(([pub, mine]) => {
+          clear(list);
+          pub.sort((a, b) => ms(b.at) - ms(a.at));
+          if (mine && mine.status !== "approved") pub.unshift(mine);
+          if (!pub.length) list.appendChild(el("li", { cls: "none", text: "No comments yet." }));
+          pub.forEach((c) => list.appendChild(el("li", { cls: "comment" }, [
+            el("div", { cls: "cmeta", text: (c.name || "A visitor") + ", " + fmtDate(c.at) +
+              (c.status === "pending" ? ". Yours, waiting for a check" : c.status === "rejected" ? ". Yours, not approved" : "") }),
+            el("div", { text: c.text }),
+            c.contact ? el("div", { cls: "cmeta", text: "Shared contact: " + c.contact }) : null
+          ])));
+        });
+      }
+      add.addEventListener("click", () => signIn(slot, () => {
+        const text = el("textarea", { rows: "3", maxlength: "1000", placeholder: "What happened when you contacted them? Anything that helps the next person." });
+        const contact = el("input", { maxlength: "200", placeholder: "A working phone, email or website (optional)" });
+        clear(slot).append(text, contact,
+          el("p", { cls: "fhint", text: "Checked by the Rapid Response team before it shows. No money requests or accusations; for serious problems use Report a problem." }),
+          el("div", { cls: "row-actions" }, [el("button", { cls: "pill dark", type: "button", text: "Send", on: { click: async () => {
+            const t = text.value.trim(), c = contact.value.trim();
+            if (t.length < 3) { toast("Write a few words."); return; }
+            const m = moneyIn(t, c);
+            if (m) { toast(NO_MONEY.replace("%s", m)); return; }
+            try {
+              await B.comment({ gid, name: o.n, state: o.st, district: o.d }, t, c);
+              clear(slot).appendChild(el("p", { cls: "fbq", text: "Thanks. It shows here once the team has checked it." }));
+              draw();
+            } catch (e) { toast(errText(e)); }
+          } } })]));
+        text.focus();
+      }));
+      draw();
+    },
 
     // Appended to a group's details when it is opened.
     detail(d, o) {

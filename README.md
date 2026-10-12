@@ -47,6 +47,15 @@ bash run.sh && bash deploy.sh
 - **State:** map of that state's districts, ranked district list, then its groups.
 - **District or search:** the groups; tap + for contacts, who runs it, and
   "More details" for addresses, AWBI code and sources.
+- **Near me** finds the nearest district with groups (location stays on the
+  phone); or pick a state, then a district.
+- **Contacts first:** every row shows its number (tap to call), email and
+  website without opening it, and lists put groups with contacts first. With
+  no contact listed, the group offers "Find their number" (a web search) and
+  "Find on Google Maps".
+- **Download CSV** saves every group in the current view (with the type and
+  filters applied): names, phones, emails, websites, addresses, who runs it,
+  AWBI code and sources. Opens in Excel or Google Sheets.
 - **Search** covers every field of every group across India (names, other
   names, people, places, addresses, phones, emails, websites, AWBI codes,
   notes) and finds sound-alike spellings and typos too: ganguli finds Suparna
@@ -72,17 +81,29 @@ monthly refreshes show up there too.
   to `.ngo-rr` so nothing touches the rest of the page. Change the look in
   rr-theme.css, never in rr.css.
 
-## Federation (groups sign in, get verified, post needs)
+## Federation (groups sign in, get verified, post needs, comments)
 
 Pages: `join.html` for groups, coordinators and anyone reporting a problem;
-`admin.html` for admins. They stay hidden until a Firebase project is set up.
+`admin.html` for admins (applications, comments, reports, coordinators, audit).
+Everything is stored in Rapid Response's Firebase project (`rrt-new-backend`),
+under the document path `ngo/dir/...`, so it never touches the app's data.
+Until the rules block is published there, the directory runs without these
+features and shows a plain "Tell us" email link instead.
+
+On every group, under its contacts:
+- **Did you reach them? Yes / No** (and why: no answer, wrong number, email
+  bounced, closed down). One answer per person per group, shown as counts.
+- **Comments**, with an optional working number or email. Each one waits for
+  an admin (Comments tab in `admin.html`) and shows only once approved; an
+  edit sends it back for a check. People sign in once (Google, or a link by
+  email; never SMS) so every answer is one real person; their email is never
+  shown.
 
 How a group gets the Verified badge (enforced by `firestore.rules`, not just
 the pages):
-1. It signs in (Google, or a link sent to its email; no SMS or WhatsApp codes)
-   and claims its listing or asks to be listed, with registration proof
-   (AWBI code, NGO Darpan ID, trust or society certificate) as photos or a
-   shared Drive folder.
+1. It signs in and claims its listing or asks to be listed, with registration
+   proof (AWBI code, NGO Darpan ID, trust or society certificate) as photos or
+   a shared Drive folder.
 2. An admin checks the documents (the console cross-checks AWBI codes against
    the official list and flags duplicate claims).
 3. Someone else vouches: a coordinator for that district or state, or a
@@ -92,30 +113,29 @@ the pages):
 5. Only then can an admin verify. Every step writes a permanent audit entry.
 
 No money: no donate buttons, UPI, bank details or fundraising text anywhere.
-The rules refuse such text; the pages explain why before sending. Verified
-groups post only in-kind needs (food, medicine, supplies, volunteers,
-transport, foster homes, vet help), which expire within 31 days. Anyone signed
-in can report a group; admins can suspend a verification.
+The rules refuse such text (comments included); the pages explain why before
+sending. Verified groups post only in-kind needs, which expire within 31 days.
 
-### One-time setup (free Firebase plan)
+Admins: the owner email in `firestore.rules`, Rapid Response's active super
+admins (their `admins` records), and anyone listed in `ngo/dir/config/admins`
+(field `emails`).
 
-1. https://console.firebase.google.com > Add project (name it, Analytics off).
-2. Build > Authentication > Get started: enable **Google**, and
-   **Email/Password** with **Email link (passwordless sign-in)**. Under
-   Settings > Authorized domains, add `ngo-finder-omega.vercel.app`.
-3. Build > Firestore Database > Create database, production mode, location
-   `asia-south1` (Mumbai).
-4. Project settings > General > Your apps > Web (`</>`): register the app and
-   copy the `firebaseConfig` values into `scraper/web/fed/config.js`
-   (they are public by design).
-5. Publish the rules: `npx firebase-tools login`, then
-   `npx firebase-tools deploy --only firestore:rules --project YOUR_PROJECT_ID`.
-6. The first admin is the owner email written in `firestore.rules`; more
-   admins go in the Firestore document `config/admins` (field `emails`, a
-   list) from the Firebase console. Appoint coordinators in `admin.html`.
+### Turning it on (rrt-new-backend, two steps in the Firebase console)
+
+1. Authentication > Sign-in method: **Google** on, and **Email/Password** with
+   **Email link (passwordless sign-in)** on. Settings > Authorized domains:
+   `rapid-response.in`, `www.rapid-response.in`, `ngo-finder-omega.vercel.app`.
+2. Firestore > Rules: put the block between the `NGO-DIRECTORY` markers of
+   `firestore.rules` inside `match /databases/{database}/documents { ... }`
+   (just before its closing brace), then Publish. Do the same in RRT's rules
+   file so a later `firebase deploy` keeps it:
+   `python3 tools/rrt_rules.py path/to/firestore-security-rules.rules`
+   (running it again replaces the block, never adds a second one).
 
 The rules have their own tests (`tests/rules`), run on the Firestore emulator
-by the Tests workflow on every push.
+by the Tests workflow on every push: alone, and inside a copy of RRT's rules
+(`tests/rules/rrt-base.rules`) to prove the block compiles there and leaves
+RRT's own data alone.
 
 ## Base data shipped in the repo
 

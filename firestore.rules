@@ -1,6 +1,14 @@
 rules_version = '2';
 
-// Animal NGOs of India: federation data.
+// Animal NGOs of India: federation data, comments and "did you reach them?".
+//
+// It lives in Rapid Response's Firebase project (rrt-new-backend), all under
+// the document path ngo/dir/..., so it never touches the app's data. The block
+// between the NGO-DIRECTORY markers below is self-contained (its helpers are
+// all named ngo...): paste it, unchanged, inside
+// "match /databases/{database}/documents { ... }" of RRT's rules
+// (rrt-platform/backend/functions/firestore-security-rules.rules).
+// tests/rules runs it alone and inside a copy of RRT's rules.
 //
 // Trust model (enforced here, not only in the app):
 //  * A group becomes Verified only when an admin has checked its documents
@@ -15,356 +23,414 @@ rules_version = '2';
 //    (UPI, bank, account numbers, rupee amounts, QR codes, wallets, sponsorship).
 //  * Every review step leaves its own permanent audit entry (one per revision).
 //
-// The owner email below is the first admin. More admins are listed (lowercase)
-// in the document config/admins, field "emails", which only the Firebase
-// console can change.
+// Admins: the owner email below, RRT's active super admins, and anyone listed
+// (lowercase) in ngo/dir/config/admins, field "emails" (Firebase console only).
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ---------------------------------------------------------- helpers
-    function signedIn() {
-      return request.auth != null && request.auth.token.email_verified == true;
-    }
-    function email() {
-      return request.auth.token.email.lower();
-    }
-    function docPath(p) {
-      return path("/databases/" + database + "/documents/" + p);
-    }
-    function isOwner() {
-      return signedIn() && email() == "narenkumar19706@gmail.com";
-    }
-    function isAdmin() {
-      return isOwner() || (signedIn()
-        && exists(/databases/$(database)/documents/config/admins)
-        && email() in get(/databases/$(database)/documents/config/admins).data.emails);
-    }
-    function coord() {
-      return get(/databases/$(database)/documents/coordinators/$(email())).data;
-    }
-    function isCoordinator() {
-      return signedIn() && exists(/databases/$(database)/documents/coordinators/$(email()));
-    }
-    // A coordinator covers a whole state ("*") or one district.
-    function coordinates(state, district) {
-      return isCoordinator() && coord().state == state && (coord().district == "*" || coord().district == district);
-    }
-    function isVerifiedMember() {
-      return signedIn() && exists(/databases/$(database)/documents/members/$(request.auth.uid));
-    }
-    function memberOf(gid) {
-      return isVerifiedMember()
-        && get(/databases/$(database)/documents/members/$(request.auth.uid)).data.gid == gid;
-    }
-    // Payment details and fundraising asks. Case-insensitive, any line.
-    // Keep in step with MONEY in scraper/web/fed/common.js (a test checks they match).
-    function hasMoney(s) {
-      return s.matches('(?is).*(₹|\\brs\\.? ?[0-9]|[0-9] ?/-|\\binr\\b|rupee|\\bu\\.? ?p\\.? ?i\\b|@(ok[a-z]+|ybl|ibl|axl|apl|paytm|upi)\\b|paytm|g-? ?pay|google ?pay|phone-? ?pe|amazon ?pay|paypal|razorpay|milaap|ketto|bhim|\\bneft\\b|\\bimps\\b|cheque|bank ?(account|details|transfer|a/?c)|acc?t\\.? ?(no|number)|account ?(no|number)|\\ba/c\\b|ifsc|\\bcash\\b|money|\\bfunds?\\b|fund ?rais|crowd ?fund|qr ?code|wallet|sponsor|donat(e|ion)s? (of|in) (money|cash)).*');
-    }
-    function textOk(s, max) {
-      return s is string && s.size() <= max && !hasMoney(s);
-    }
-    function shortOk(s, max) {
-      return s is string && s.size() <= max;
-    }
-    // Up to three short entries, each checked (rules cannot loop).
-    function listOk(l, max) {
-      return l is list && l.size() <= 3
-        && (l.size() < 1 || textOk(l[0], max))
-        && (l.size() < 2 || textOk(l[1], max))
-        && (l.size() < 3 || textOk(l[2], max));
-    }
-    function onlyChanges(keys) {
-      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys);
-    }
-    // Every change to an application bumps its revision by one.
-    function nextRev() {
-      return request.resource.data.rev == resource.data.get("rev", 0) + 1;
-    }
-    // A review step writes a new audit entry, named after the step, the
-    // application, the new revision and the reviewer, in the same batch.
-    function audited(action, appId) {
-      return auditedId(action + "_" + appId + "_" + string(request.resource.data.rev) + "_" + request.auth.uid, action);
-    }
-    function auditedId(id, action) {
-      return !exists(docPath("audit/" + id))
-        && getAfter(docPath("audit/" + id)).data.action == action
-        && getAfter(docPath("audit/" + id)).data.by == request.auth.uid;
-    }
+    // ===== NGO-DIRECTORY START =====
+    match /ngo/dir {
 
-    // ---------------------------------------------------------- config
-    match /config/{doc} {
-      allow read: if isAdmin();
-      allow write: if false;  // Firebase console only
-    }
 
-    // ---------------------------------------------------------- coordinators
-    match /coordinators/{mail} {
-      allow read: if isAdmin() || (signedIn() && email() == mail);
-      allow create, update: if isAdmin() && mail == mail.lower()
-        && request.resource.data.keys().hasOnly(["state", "district", "name", "by", "at"])
-        && shortOk(request.resource.data.state, 60) && shortOk(request.resource.data.district, 60)
-        && textOk(request.resource.data.name, 100)
-        && request.resource.data.by == request.auth.uid && request.resource.data.at == request.time;
-      allow delete: if isAdmin();
-    }
-
-    // ---------------------------------------------------------- applications
-    // A claim on a listed group, or a new group asking to be listed.
-    match /applications/{id} {
-      function app() { return resource.data; }
-      function next() { return request.resource.data; }
-      function detailsOk() {
-        return textOk(next().about, 2000) && textOk(next().address, 500) && textOk(next().town, 120)
-          && textOk(next().phone, 30) && textOk(next().officialEmail, 200) && textOk(next().website, 300)
-          && next().regType in ["awbi", "darpan", "trust", "society", "section8", "other"]
-          && textOk(next().regNumber, 80) && next().regNumber.size() >= 3
-          && shortOk(next().voucherEmail, 200) && next().voucherEmail == next().voucherEmail.lower()
-          && shortOk(next().driveLink, 500)
-          && next().proofs is list && next().proofs.size() <= 6;
+      // ---------------------------------------------------------- helpers
+      function ngoSignedIn() {
+        return request.auth != null && request.auth.token.email_verified == true;
+      }
+      function ngoEmail() {
+        return request.auth.token.email.lower();
+      }
+      function ngoDocPath(p) {
+        return path("/databases/" + database + "/documents/ngo/dir/" + p);
+      }
+      function ngoIsOwner() {
+        return ngoSignedIn() && ngoEmail() == "narenkumar19706@gmail.com";
+      }
+      function ngoIsAdmin() {
+        return ngoIsOwner() || (ngoSignedIn()
+          && ((exists(/databases/$(database)/documents/ngo/dir/config/admins)
+               && ngoEmail() in get(/databases/$(database)/documents/ngo/dir/config/admins).data.emails)
+              || ngoRrtSuperAdmin()));
+      }
+      // Rapid Response's own super admins: an ACTIVE super-admin record for this
+      // verified email (the same test the RRT rules use).
+      function ngoRrtSuperAdmin() {
+        return exists(/databases/$(database)/documents/admins/$(request.auth.token.email))
+          && get(/databases/$(database)/documents/admins/$(request.auth.token.email)).data.get("role", "") == "super-admin"
+          && get(/databases/$(database)/documents/admins/$(request.auth.token.email)).data.get("active", true) != false
+          && !(get(/databases/$(database)/documents/admins/$(request.auth.token.email)).data.get("status", "active") in ["suspended", "revoked"]);
+      }
+      function ngoCoord() {
+        return get(/databases/$(database)/documents/ngo/dir/coordinators/$(ngoEmail())).data;
+      }
+      function ngoIsCoordinator() {
+        return ngoSignedIn() && exists(/databases/$(database)/documents/ngo/dir/coordinators/$(ngoEmail()));
+      }
+      // A coordinator covers a whole state ("*") or one district.
+      function ngoCoordinates(state, district) {
+        return ngoIsCoordinator() && ngoCoord().state == state && (ngoCoord().district == "*" || ngoCoord().district == district);
+      }
+      function ngoIsVerifiedMember() {
+        return ngoSignedIn() && exists(/databases/$(database)/documents/ngo/dir/members/$(request.auth.uid));
+      }
+      function ngoMemberOf(gid) {
+        return ngoIsVerifiedMember()
+          && get(/databases/$(database)/documents/ngo/dir/members/$(request.auth.uid)).data.gid == gid;
+      }
+      // Payment details and fundraising asks. Case-insensitive, any line.
+      // Keep in step with MONEY in scraper/web/fed/common.js (a test checks they match).
+      function ngoHasMoney(s) {
+        return s.matches('(?is).*(₹|\\brs\\.? ?[0-9]|[0-9] ?/-|\\binr\\b|rupee|\\bu\\.? ?p\\.? ?i\\b|@(ok[a-z]+|ybl|ibl|axl|apl|paytm|upi)\\b|paytm|g-? ?pay|google ?pay|phone-? ?pe|amazon ?pay|paypal|razorpay|milaap|ketto|bhim|\\bneft\\b|\\bimps\\b|cheque|bank ?(account|details|transfer|a/?c)|acc?t\\.? ?(no|number)|account ?(no|number)|\\ba/c\\b|ifsc|\\bcash\\b|money|\\bfunds?\\b|fund ?rais|crowd ?fund|qr ?code|wallet|sponsor|donat(e|ion)s? (of|in) (money|cash)).*');
+      }
+      function ngoTextOk(s, max) {
+        return s is string && s.size() <= max && !ngoHasMoney(s);
+      }
+      function ngoShortOk(s, max) {
+        return s is string && s.size() <= max;
+      }
+      // Up to three short entries, each checked (rules cannot loop).
+      function ngoListOk(l, max) {
+        return l is list && l.size() <= 3
+          && (l.size() < 1 || ngoTextOk(l[0], max))
+          && (l.size() < 2 || ngoTextOk(l[1], max))
+          && (l.size() < 3 || ngoTextOk(l[2], max));
+      }
+      function ngoOnlyChanges(keys) {
+        return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys);
+      }
+      // Every change to an application bumps its revision by one.
+      function ngoNextRev() {
+        return request.resource.data.rev == resource.data.get("rev", 0) + 1;
+      }
+      // A review step writes a new audit entry, named after the step, the
+      // application, the new revision and the reviewer, in the same batch.
+      function ngoAudited(action, appId) {
+        return ngoAuditedId(action + "_" + appId + "_" + string(request.resource.data.rev) + "_" + request.auth.uid, action);
+      }
+      function ngoAuditedId(id, action) {
+        return !exists(ngoDocPath("audit/" + id))
+          && getAfter(ngoDocPath("audit/" + id)).data.action == action
+          && getAfter(ngoDocPath("audit/" + id)).data.by == request.auth.uid;
       }
 
-      allow read: if isAdmin()
-        || (signedIn() && app().uid == request.auth.uid)
-        || coordinates(app().state, app().district)
-        || (signedIn() && app().voucherEmail == email());
-
-      allow create: if signedIn()
-        && next().keys().hasOnly(["uid", "email", "kind", "gid", "name", "state", "district", "town", "address",
-                                  "role", "regType", "regNumber", "awbiCode", "phone", "officialEmail", "website",
-                                  "about", "voucherEmail", "proofs", "driveLink", "declaration", "status",
-                                  "rev", "createdAt", "updatedAt"])
-        && next().uid == request.auth.uid && next().email == email()
-        && next().kind in ["claim", "new"]
-        && next().status == "submitted" && next().rev == 0
-        && next().declaration == true
-        && next().createdAt == request.time && next().updatedAt == request.time
-        && shortOk(next().gid, 200) && next().gid.size() > 0
-        && textOk(next().name, 200) && next().name.size() > 2
-        && shortOk(next().state, 60) && next().state.size() > 0
-        && shortOk(next().district, 60) && next().district.size() > 0
-        && textOk(next().role, 100) && shortOk(next().awbiCode, 40)
-        && detailsOk();
-
-      // Admin decisions. (First, so an admin's batch is checked against this clause
-      // before the others use up the per-request evaluation budget.)
-      allow update: if app().uid != request.auth.uid
-        && onlyChanges(["status", "docsOk", "docsNote", "needsVisit", "decision", "updatedAt", "reviewedBy", "rev"])
-        && nextRev()
-        && isAdmin()
-        && next().status in ["submitted", "info_needed", "docs_ok", "visit_required", "verified", "rejected", "suspended"]
-        && next().updatedAt == request.time && next().reviewedBy == request.auth.uid
-        && textOk(next().get("decision", ""), 1000) && textOk(next().get("docsNote", ""), 1000)
-        // Once a visit has been asked for, it cannot be dropped.
-        && (app().get("needsVisit", false) != true || next().get("needsVisit", false) == true)
-        && (next().status != "visit_required" || next().get("needsVisit", false) == true)
-        && (next().status != "docs_ok" || next().get("docsOk", false) == true)
-        && (next().status != "suspended" || app().status == "verified")
-        && (next().status != "verified" || (
-              app().status in ["submitted", "docs_ok", "visit_required"]
-              // documents were checked in an earlier step
-              && app().get("docsOk", false) == true && next().get("docsOk", false) == true
-              // vouched for by someone other than the applicant and this admin
-              && app().vouch.ok == true && app().vouch.by != app().uid && app().vouch.by != request.auth.uid
-              // a coordinator vouched, or a coordinator visited
-              && (app().vouch.role == "coordinator" || app().get("needsVisit", false) == true)
-              && (next().get("needsVisit", false) != true || app().visit.ok == true)
-              // never take over another application's profile
-              && (!exists(docPath("profiles/" + app().gid)) || get(docPath("profiles/" + app().gid)).data.appId == id)))
-        && audited("decide", id);
-
-      // The applicant may fix details while it waits or after "more information
-      // needed". Any change sends the documents back for checking.
-      allow update: if signedIn() && app().uid == request.auth.uid
-        && app().status in ["submitted", "info_needed"]
-        && onlyChanges(["about", "address", "regNumber", "regType", "phone", "officialEmail", "website",
-                        "voucherEmail", "proofs", "driveLink", "status", "updatedAt", "town", "docsOk", "rev"])
-        && nextRev()
-        && next().status == "submitted" && next().updatedAt == request.time
-        && next().get("docsOk", false) == false
-        && detailsOk();
-
-      // The voucher: a coordinator for that place, or a member of a verified group
-      // whose email the applicant named. Never the applicant. A refused vouch can
-      // only be changed by whoever refused.
-      allow update: if signedIn() && app().uid != request.auth.uid
-        && onlyChanges(["vouch", "updatedAt", "rev"])
-        && nextRev()
-        && app().status in ["submitted", "info_needed", "docs_ok", "visit_required"]
-        && (!("vouch" in app()) || app().vouch.ok == true || app().vouch.by == request.auth.uid)
-        && next().vouch.keys().hasOnly(["ok", "by", "email", "note", "at", "role"])
-        && next().vouch.by == request.auth.uid && next().vouch.email == email()
-        && next().vouch.at == request.time && next().vouch.ok is bool
-        && textOk(next().vouch.note, 1000)
-        && next().updatedAt == request.time
-        && ((next().vouch.role == "coordinator" && coordinates(app().state, app().district))
-            || (next().vouch.role == "member" && app().voucherEmail == email()
-                && isVerifiedMember() && !memberOf(app().gid)))
-        && audited("vouch", id);
-
-      // A coordinator records a visit or video call.
-      allow update: if signedIn() && app().uid != request.auth.uid
-        && onlyChanges(["visit", "updatedAt", "rev"])
-        && nextRev()
-        && app().status == "visit_required"
-        && coordinates(app().state, app().district)
-        && next().visit.keys().hasOnly(["ok", "by", "email", "note", "at", "how"])
-        && next().visit.by == request.auth.uid && next().visit.email == email()
-        && next().visit.at == request.time
-        && next().visit.ok is bool && next().visit.how in ["site", "video"]
-        && textOk(next().visit.note, 1000)
-        && next().updatedAt == request.time
-        && audited("visit", id);
-
-      allow delete: if false;
-    }
-
-    // ---------------------------------------------------------- proof documents
-    // Small compressed images or PDFs stored as data URLs (free plan has no file
-    // storage). At most 30 per person: ids are <uid>_0 to <uid>_29.
-    match /proofs/{id} {
-      allow create: if signedIn()
-        && id.matches(request.auth.uid + "_([0-9]|[12][0-9])")
-        && request.resource.data.keys().hasOnly(["uid", "name", "type", "data", "state", "district", "createdAt"])
-        && request.resource.data.uid == request.auth.uid
-        && shortOk(request.resource.data.name, 120)
-        && request.resource.data.type in ["image/jpeg", "image/png", "image/webp", "application/pdf"]
-        && shortOk(request.resource.data.state, 60) && shortOk(request.resource.data.district, 60)
-        && request.resource.data.data is string && request.resource.data.data.size() < 950000
-        && request.resource.data.data.matches("data:" + request.resource.data.type + ";base64,.*")
-        && request.resource.data.createdAt == request.time;
-      allow read: if isAdmin() || (signedIn() && resource.data.uid == request.auth.uid)
-        || coordinates(resource.data.state, resource.data.district);
-      allow update: if false;
-      allow delete: if isAdmin();
-    }
-
-    // ---------------------------------------------------------- members
-    // Written by an admin when an application is verified.
-    match /members/{uid} {
-      function vapp() { return getAfter(docPath("applications/" + request.resource.data.appId)).data; }
-      allow read: if isAdmin() || (signedIn() && request.auth.uid == uid);
-      allow create: if isAdmin()
-        && request.resource.data.keys().hasOnly(["gid", "email", "appId", "at"])
-        && vapp().status == "verified" && vapp().uid == uid
-        && request.resource.data.gid == vapp().gid && request.resource.data.email == vapp().email;
-      allow update: if false;
-      allow delete: if isAdmin();
-    }
-
-    // ---------------------------------------------------------- verified profiles (public)
-    match /profiles/{gid} {
-      function vapp() { return getAfter(docPath("applications/" + request.resource.data.appId)).data; }
-      function editableOk() {
-        return textOk(request.resource.data.about, 2000)
-          && textOk(request.resource.data.hours, 300)
-          && listOk(request.resource.data.phones, 30)
-          && listOk(request.resource.data.emails, 200)
-          && textOk(request.resource.data.website, 300)
-          && request.resource.data.capacity.keys().hasOnly(["intake", "note"])
-          && request.resource.data.capacity.intake in ["open", "limited", "full"]
-          && textOk(request.resource.data.capacity.note, 300)
-          && request.resource.data.updatedAt == request.time;
+      // ---------------------------------------------------------- config
+      match /config/{doc} {
+        allow read: if ngoIsAdmin();
+        allow write: if false;  // Firebase console only
       }
-      allow read: if true;
-      // Only in the batch that verifies its application, copying that application.
-      allow create: if isAdmin()
-        && request.resource.data.keys().hasOnly(["appId", "name", "state", "district", "town", "about", "hours",
-                                                 "phones", "emails", "website", "members", "regType", "regNumber",
-                                                 "capacity", "verifiedAt", "updatedAt"])
-        && vapp().status == "verified" && vapp().gid == gid
-        && request.resource.data.name == vapp().name
-        && request.resource.data.state == vapp().state && request.resource.data.district == vapp().district
-        && request.resource.data.members == [vapp().uid]
-        && request.resource.data.verifiedAt == request.time
-        && editableOk();
-      // Members (and admins) keep the details current; the name and place never change.
-      allow update: if (memberOf(gid) || isAdmin())
-        && onlyChanges(["about", "phones", "emails", "website", "hours", "capacity", "updatedAt"])
-        && editableOk();
-      allow delete: if isAdmin();
-    }
 
-    // Verified groups at a glance, for the public directory (one read per visit).
-    // Each write adds or removes exactly one group, matching its profile.
-    match /public/{doc} {
-      function indexOk() {
-        let before = resource == null ? {} : resource.data.get("verified", {});
-        let after = request.resource.data.verified;
-        let g = request.resource.data.last;
-        return doc == "index"
-          && request.resource.data.keys().hasOnly(["verified", "last"])
-          && g is string
-          && after.diff(before).affectedKeys().hasOnly([g])
-          && ((g in after
-                && after[g].keys().hasOnly(["n", "st", "d"])
-                && existsAfter(docPath("profiles/" + g))
-                && getAfter(docPath("profiles/" + g)).data.name == after[g].n
-                && getAfter(docPath("profiles/" + g)).data.state == after[g].st
-                && getAfter(docPath("profiles/" + g)).data.district == after[g].d)
-              || (!(g in after) && !existsAfter(docPath("profiles/" + g))));
+      // ---------------------------------------------------------- coordinators
+      match /coordinators/{mail} {
+        allow read: if ngoIsAdmin() || (ngoSignedIn() && ngoEmail() == mail);
+        allow create, update: if ngoIsAdmin() && mail == mail.lower()
+          && request.resource.data.keys().hasOnly(["state", "district", "name", "by", "at"])
+          && ngoShortOk(request.resource.data.state, 60) && ngoShortOk(request.resource.data.district, 60)
+          && ngoTextOk(request.resource.data.name, 100)
+          && request.resource.data.by == request.auth.uid && request.resource.data.at == request.time;
+        allow delete: if ngoIsAdmin();
       }
-      allow read: if true;
-      allow write: if isAdmin() && indexOk();
-    }
 
-    // ---------------------------------------------------------- needs (public, in-kind only)
-    match /needs/{id} {
-      function prof() { return get(docPath("profiles/" + request.resource.data.gid)).data; }
-      allow read: if true;
-      allow create: if memberOf(request.resource.data.gid)
-        && request.resource.data.keys().hasOnly(["gid", "name", "state", "district", "kind", "text", "urgent",
-                                                 "status", "by", "createdAt", "expiresAt"])
-        && request.resource.data.name == prof().name
-        && request.resource.data.state == prof().state && request.resource.data.district == prof().district
-        && request.resource.data.kind in ["food", "medicine", "supplies", "volunteers", "transport", "foster",
-                                          "adoption", "vet", "other"]
-        && textOk(request.resource.data.text, 600) && request.resource.data.text.size() >= 5
-        && request.resource.data.urgent is bool
-        && request.resource.data.status == "open" && request.resource.data.by == request.auth.uid
-        && request.resource.data.createdAt == request.time
-        && request.resource.data.expiresAt > request.time
-        && request.resource.data.expiresAt <= request.time + duration.value(31, "d");
-      allow update: if (memberOf(resource.data.gid)
-          && resource.data.status != "removed"
-          && onlyChanges(["status", "text", "urgent", "expiresAt"])
-          && request.resource.data.status in ["open", "met", "closed"]
-          && textOk(request.resource.data.text, 600)
+      // ---------------------------------------------------------- applications
+      // A claim on a listed group, or a new group asking to be listed.
+      match /applications/{id} {
+        function ngoApp() { return resource.data; }
+        function ngoNext() { return request.resource.data; }
+        function ngoDetailsOk() {
+          return ngoTextOk(ngoNext().about, 2000) && ngoTextOk(ngoNext().address, 500) && ngoTextOk(ngoNext().town, 120)
+            && ngoTextOk(ngoNext().phone, 30) && ngoTextOk(ngoNext().officialEmail, 200) && ngoTextOk(ngoNext().website, 300)
+            && ngoNext().regType in ["awbi", "darpan", "trust", "society", "section8", "other"]
+            && ngoTextOk(ngoNext().regNumber, 80) && ngoNext().regNumber.size() >= 3
+            && ngoShortOk(ngoNext().voucherEmail, 200) && ngoNext().voucherEmail == ngoNext().voucherEmail.lower()
+            && ngoShortOk(ngoNext().driveLink, 500)
+            && ngoNext().proofs is list && ngoNext().proofs.size() <= 6;
+        }
+
+        allow read: if ngoIsAdmin()
+          || (ngoSignedIn() && ngoApp().uid == request.auth.uid)
+          || ngoCoordinates(ngoApp().state, ngoApp().district)
+          || (ngoSignedIn() && ngoApp().voucherEmail == ngoEmail());
+
+        allow create: if ngoSignedIn()
+          && ngoNext().keys().hasOnly(["uid", "email", "kind", "gid", "name", "state", "district", "town", "address",
+                                    "role", "regType", "regNumber", "awbiCode", "phone", "officialEmail", "website",
+                                    "about", "voucherEmail", "proofs", "driveLink", "declaration", "status",
+                                    "rev", "createdAt", "updatedAt"])
+          && ngoNext().uid == request.auth.uid && ngoNext().email == ngoEmail()
+          && ngoNext().kind in ["claim", "new"]
+          && ngoNext().status == "submitted" && ngoNext().rev == 0
+          && ngoNext().declaration == true
+          && ngoNext().createdAt == request.time && ngoNext().updatedAt == request.time
+          && ngoShortOk(ngoNext().gid, 200) && ngoNext().gid.size() > 0
+          && ngoTextOk(ngoNext().name, 200) && ngoNext().name.size() > 2
+          && ngoShortOk(ngoNext().state, 60) && ngoNext().state.size() > 0
+          && ngoShortOk(ngoNext().district, 60) && ngoNext().district.size() > 0
+          && ngoTextOk(ngoNext().role, 100) && ngoShortOk(ngoNext().awbiCode, 40)
+          && ngoDetailsOk();
+
+        // Admin decisions. (First, so an admin's batch is checked against this clause
+        // before the others use up the per-request evaluation budget.)
+        allow update: if ngoApp().uid != request.auth.uid
+          && ngoOnlyChanges(["status", "docsOk", "docsNote", "needsVisit", "decision", "updatedAt", "reviewedBy", "rev"])
+          && ngoNextRev()
+          && ngoIsAdmin()
+          && ngoNext().status in ["submitted", "info_needed", "docs_ok", "visit_required", "verified", "rejected", "suspended"]
+          && ngoNext().updatedAt == request.time && ngoNext().reviewedBy == request.auth.uid
+          && ngoTextOk(ngoNext().get("decision", ""), 1000) && ngoTextOk(ngoNext().get("docsNote", ""), 1000)
+          // Once a visit has been asked for, it cannot be dropped.
+          && (ngoApp().get("needsVisit", false) != true || ngoNext().get("needsVisit", false) == true)
+          && (ngoNext().status != "visit_required" || ngoNext().get("needsVisit", false) == true)
+          && (ngoNext().status != "docs_ok" || ngoNext().get("docsOk", false) == true)
+          && (ngoNext().status != "suspended" || ngoApp().status == "verified")
+          && (ngoNext().status != "verified" || (
+                ngoApp().status in ["submitted", "docs_ok", "visit_required"]
+                // documents were checked in an earlier step
+                && ngoApp().get("docsOk", false) == true && ngoNext().get("docsOk", false) == true
+                // vouched for by someone other than the applicant and this admin
+                && ngoApp().vouch.ok == true && ngoApp().vouch.by != ngoApp().uid && ngoApp().vouch.by != request.auth.uid
+                // a coordinator vouched, or a coordinator visited
+                && (ngoApp().vouch.role == "coordinator" || ngoApp().get("needsVisit", false) == true)
+                && (ngoNext().get("needsVisit", false) != true || ngoApp().visit.ok == true)
+                // never take over another application's profile
+                && (!exists(ngoDocPath("profiles/" + ngoApp().gid)) || get(ngoDocPath("profiles/" + ngoApp().gid)).data.appId == id)))
+          && ngoAudited("decide", id);
+
+        // The applicant may fix details while it waits or after "more information
+        // needed". Any change sends the documents back for checking.
+        allow update: if ngoSignedIn() && ngoApp().uid == request.auth.uid
+          && ngoApp().status in ["submitted", "info_needed"]
+          && ngoOnlyChanges(["about", "address", "regNumber", "regType", "phone", "officialEmail", "website",
+                          "voucherEmail", "proofs", "driveLink", "status", "updatedAt", "town", "docsOk", "rev"])
+          && ngoNextRev()
+          && ngoNext().status == "submitted" && ngoNext().updatedAt == request.time
+          && ngoNext().get("docsOk", false) == false
+          && ngoDetailsOk();
+
+        // The voucher: a coordinator for that place, or a member of a verified group
+        // whose email the applicant named. Never the applicant. A refused vouch can
+        // only be changed by whoever refused.
+        allow update: if ngoSignedIn() && ngoApp().uid != request.auth.uid
+          && ngoOnlyChanges(["vouch", "updatedAt", "rev"])
+          && ngoNextRev()
+          && ngoApp().status in ["submitted", "info_needed", "docs_ok", "visit_required"]
+          && (!("vouch" in ngoApp()) || ngoApp().vouch.ok == true || ngoApp().vouch.by == request.auth.uid)
+          && ngoNext().vouch.keys().hasOnly(["ok", "by", "email", "note", "at", "role"])
+          && ngoNext().vouch.by == request.auth.uid && ngoNext().vouch.email == ngoEmail()
+          && ngoNext().vouch.at == request.time && ngoNext().vouch.ok is bool
+          && ngoTextOk(ngoNext().vouch.note, 1000)
+          && ngoNext().updatedAt == request.time
+          && ((ngoNext().vouch.role == "coordinator" && ngoCoordinates(ngoApp().state, ngoApp().district))
+              || (ngoNext().vouch.role == "member" && ngoApp().voucherEmail == ngoEmail()
+                  && ngoIsVerifiedMember() && !ngoMemberOf(ngoApp().gid)))
+          && ngoAudited("vouch", id);
+
+        // A coordinator records a visit or video call.
+        allow update: if ngoSignedIn() && ngoApp().uid != request.auth.uid
+          && ngoOnlyChanges(["visit", "updatedAt", "rev"])
+          && ngoNextRev()
+          && ngoApp().status == "visit_required"
+          && ngoCoordinates(ngoApp().state, ngoApp().district)
+          && ngoNext().visit.keys().hasOnly(["ok", "by", "email", "note", "at", "how"])
+          && ngoNext().visit.by == request.auth.uid && ngoNext().visit.email == ngoEmail()
+          && ngoNext().visit.at == request.time
+          && ngoNext().visit.ok is bool && ngoNext().visit.how in ["site", "video"]
+          && ngoTextOk(ngoNext().visit.note, 1000)
+          && ngoNext().updatedAt == request.time
+          && ngoAudited("visit", id);
+
+        allow delete: if false;
+      }
+
+      // ---------------------------------------------------------- proof documents
+      // Small compressed images or PDFs stored as data URLs (free plan has no file
+      // storage). At most 30 per person: ids are <uid>_0 to <uid>_29.
+      match /proofs/{id} {
+        allow create: if ngoSignedIn()
+          && id.matches(request.auth.uid + "_([0-9]|[12][0-9])")
+          && request.resource.data.keys().hasOnly(["uid", "name", "type", "data", "state", "district", "createdAt"])
+          && request.resource.data.uid == request.auth.uid
+          && ngoShortOk(request.resource.data.name, 120)
+          && request.resource.data.type in ["image/jpeg", "image/png", "image/webp", "application/pdf"]
+          && ngoShortOk(request.resource.data.state, 60) && ngoShortOk(request.resource.data.district, 60)
+          && request.resource.data.data is string && request.resource.data.data.size() < 950000
+          && request.resource.data.data.matches("data:" + request.resource.data.type + ";base64,.*")
+          && request.resource.data.createdAt == request.time;
+        allow read: if ngoIsAdmin() || (ngoSignedIn() && resource.data.uid == request.auth.uid)
+          || ngoCoordinates(resource.data.state, resource.data.district);
+        allow update: if false;
+        allow delete: if ngoIsAdmin();
+      }
+
+      // ---------------------------------------------------------- members
+      // Written by an admin when an application is verified.
+      match /members/{uid} {
+        function ngoVapp() { return getAfter(ngoDocPath("applications/" + request.resource.data.appId)).data; }
+        allow read: if ngoIsAdmin() || (ngoSignedIn() && request.auth.uid == uid);
+        allow create: if ngoIsAdmin()
+          && request.resource.data.keys().hasOnly(["gid", "email", "appId", "at"])
+          && ngoVapp().status == "verified" && ngoVapp().uid == uid
+          && request.resource.data.gid == ngoVapp().gid && request.resource.data.email == ngoVapp().email;
+        allow update: if false;
+        allow delete: if ngoIsAdmin();
+      }
+
+      // ---------------------------------------------------------- verified profiles (public)
+      match /profiles/{gid} {
+        function ngoVapp() { return getAfter(ngoDocPath("applications/" + request.resource.data.appId)).data; }
+        function ngoEditableOk() {
+          return ngoTextOk(request.resource.data.about, 2000)
+            && ngoTextOk(request.resource.data.hours, 300)
+            && ngoListOk(request.resource.data.phones, 30)
+            && ngoListOk(request.resource.data.emails, 200)
+            && ngoTextOk(request.resource.data.website, 300)
+            && request.resource.data.capacity.keys().hasOnly(["intake", "note"])
+            && request.resource.data.capacity.intake in ["open", "limited", "full"]
+            && ngoTextOk(request.resource.data.capacity.note, 300)
+            && request.resource.data.updatedAt == request.time;
+        }
+        allow read: if true;
+        // Only in the batch that verifies its application, copying that application.
+        allow create: if ngoIsAdmin()
+          && request.resource.data.keys().hasOnly(["appId", "name", "state", "district", "town", "about", "hours",
+                                                   "phones", "emails", "website", "members", "regType", "regNumber",
+                                                   "capacity", "verifiedAt", "updatedAt"])
+          && ngoVapp().status == "verified" && ngoVapp().gid == gid
+          && request.resource.data.name == ngoVapp().name
+          && request.resource.data.state == ngoVapp().state && request.resource.data.district == ngoVapp().district
+          && request.resource.data.members == [ngoVapp().uid]
+          && request.resource.data.verifiedAt == request.time
+          && ngoEditableOk();
+        // Members (and admins) keep the details current; the name and place never change.
+        allow update: if (ngoMemberOf(gid) || ngoIsAdmin())
+          && ngoOnlyChanges(["about", "phones", "emails", "website", "hours", "capacity", "updatedAt"])
+          && ngoEditableOk();
+        allow delete: if ngoIsAdmin();
+      }
+
+      // Verified groups at a glance, for the public directory (one read per visit).
+      // Each write adds or removes exactly one group, matching its profile.
+      match /public/{doc} {
+        function ngoIndexOk() {
+          let before = resource == null ? {} : resource.data.get("verified", {});
+          let after = request.resource.data.verified;
+          let g = request.resource.data.last;
+          return doc == "index"
+            && request.resource.data.keys().hasOnly(["verified", "last"])
+            && g is string
+            && after.diff(before).affectedKeys().hasOnly([g])
+            && ((g in after
+                  && after[g].keys().hasOnly(["n", "st", "d"])
+                  && existsAfter(ngoDocPath("profiles/" + g))
+                  && getAfter(ngoDocPath("profiles/" + g)).data.name == after[g].n
+                  && getAfter(ngoDocPath("profiles/" + g)).data.state == after[g].st
+                  && getAfter(ngoDocPath("profiles/" + g)).data.district == after[g].d)
+                || (!(g in after) && !existsAfter(ngoDocPath("profiles/" + g))));
+        }
+        allow read: if true;
+        allow write: if ngoIsAdmin() && ngoIndexOk();
+      }
+
+      // ---------------------------------------------------------- needs (public, in-kind only)
+      match /needs/{id} {
+        function ngoProf() { return get(ngoDocPath("profiles/" + request.resource.data.gid)).data; }
+        allow read: if true;
+        allow create: if ngoMemberOf(request.resource.data.gid)
+          && request.resource.data.keys().hasOnly(["gid", "name", "state", "district", "kind", "text", "urgent",
+                                                   "status", "by", "createdAt", "expiresAt"])
+          && request.resource.data.name == ngoProf().name
+          && request.resource.data.state == ngoProf().state && request.resource.data.district == ngoProf().district
+          && request.resource.data.kind in ["food", "medicine", "supplies", "volunteers", "transport", "foster",
+                                            "adoption", "vet", "other"]
+          && ngoTextOk(request.resource.data.text, 600) && request.resource.data.text.size() >= 5
           && request.resource.data.urgent is bool
-          && request.resource.data.expiresAt <= request.time + duration.value(31, "d"))
-        || (isAdmin() && onlyChanges(["status"]) && request.resource.data.status == "removed");
-      allow delete: if isAdmin();
-    }
+          && request.resource.data.status == "open" && request.resource.data.by == request.auth.uid
+          && request.resource.data.createdAt == request.time
+          && request.resource.data.expiresAt > request.time
+          && request.resource.data.expiresAt <= request.time + duration.value(31, "d");
+        allow update: if (ngoMemberOf(resource.data.gid)
+            && resource.data.status != "removed"
+            && ngoOnlyChanges(["status", "text", "urgent", "expiresAt"])
+            && request.resource.data.status in ["open", "met", "closed"]
+            && ngoTextOk(request.resource.data.text, 600)
+            && request.resource.data.urgent is bool
+            && request.resource.data.expiresAt <= request.time + duration.value(31, "d"))
+          || (ngoIsAdmin() && ngoOnlyChanges(["status"]) && request.resource.data.status == "removed");
+        allow delete: if ngoIsAdmin();
+      }
 
-    // ---------------------------------------------------------- reports from the public
-    match /reports/{id} {
-      allow create: if signedIn()
-        && request.resource.data.keys().hasOnly(["target", "targetName", "reason", "text", "uid", "email", "status", "createdAt"])
-        && request.resource.data.uid == request.auth.uid && request.resource.data.email == email()
-        && shortOk(request.resource.data.target, 200) && shortOk(request.resource.data.targetName, 200)
-        && request.resource.data.reason in ["fake", "money", "wrong", "cruelty", "closed", "other"]
-        && shortOk(request.resource.data.text, 2000)
-        && request.resource.data.status == "open" && request.resource.data.createdAt == request.time;
-      allow read: if isAdmin();
-      allow update: if isAdmin() && onlyChanges(["status", "resolution", "resolvedBy", "resolvedAt"])
-        && shortOk(request.resource.data.resolution, 1000);
-      allow delete: if false;
-    }
+      // ---------------------------------------------------------- reports from the public
+      match /reports/{id} {
+        allow create: if ngoSignedIn()
+          && request.resource.data.keys().hasOnly(["target", "targetName", "reason", "text", "uid", "email", "status", "createdAt"])
+          && request.resource.data.uid == request.auth.uid && request.resource.data.email == ngoEmail()
+          && ngoShortOk(request.resource.data.target, 200) && ngoShortOk(request.resource.data.targetName, 200)
+          && request.resource.data.reason in ["fake", "money", "wrong", "cruelty", "closed", "other"]
+          && ngoShortOk(request.resource.data.text, 2000)
+          && request.resource.data.status == "open" && request.resource.data.createdAt == request.time;
+        allow read: if ngoIsAdmin();
+        allow update: if ngoIsAdmin() && ngoOnlyChanges(["status", "resolution", "resolvedBy", "resolvedAt"])
+          && ngoShortOk(request.resource.data.resolution, 1000);
+        allow delete: if false;
+      }
 
-    // ---------------------------------------------------------- audit log (append only)
-    // Entry ids end with the writer's uid, so nobody can take an id meant for someone else.
-    match /audit/{id} {
-      // Admins read everything; others may check their own entries.
-      allow read: if isAdmin() || (signedIn() && (resource == null || resource.data.by == request.auth.uid));
-      allow create: if (isAdmin() || isCoordinator() || isVerifiedMember())
-        && id.matches(".*_" + request.auth.uid)
-        && request.resource.data.keys().hasOnly(["by", "email", "action", "target", "note", "at"])
-        && request.resource.data.by == request.auth.uid && request.resource.data.email == email()
-        && request.resource.data.at == request.time
-        && shortOk(request.resource.data.action, 40) && shortOk(request.resource.data.target, 300)
-        && shortOk(request.resource.data.note, 2000);
-      allow update, delete: if false;
+      // ---------------------------------------------------------- audit log (append only)
+      // Entry ids end with the writer's uid, so nobody can take an id meant for someone else.
+      match /audit/{id} {
+        // Admins read everything; others may check their own entries.
+        allow read: if ngoIsAdmin() || (ngoSignedIn() && (resource == null || resource.data.by == request.auth.uid));
+        allow create: if (ngoIsAdmin() || ngoIsCoordinator() || ngoIsVerifiedMember())
+          && id.matches(".*_" + request.auth.uid)
+          && request.resource.data.keys().hasOnly(["by", "email", "action", "target", "note", "at"])
+          && request.resource.data.by == request.auth.uid && request.resource.data.email == ngoEmail()
+          && request.resource.data.at == request.time
+          && ngoShortOk(request.resource.data.action, 40) && ngoShortOk(request.resource.data.target, 300)
+          && ngoShortOk(request.resource.data.note, 2000);
+        allow update, delete: if false;
+      }
+
+      // ---------------------------------------------------------- did you reach them? (public counts)
+      // One answer per person per group (id <group>_<uid>); they can change it.
+      match /checks/{id} {
+        allow read: if true;
+        allow create, update: if ngoSignedIn()
+          && id == request.resource.data.gid + "_" + request.auth.uid
+          && request.resource.data.keys().hasOnly(["gid", "uid", "ok", "why", "at"])
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.gid is string && request.resource.data.gid.matches("[a-z0-9-]{1,200}")
+          && ((request.resource.data.ok == true && request.resource.data.why == "")
+              || (request.resource.data.ok == false
+                  && request.resource.data.why in ["no_answer", "wrong_number", "email_bounced", "closed", "other"]))
+          && request.resource.data.at == request.time;
+        allow delete: if (ngoSignedIn() && resource.data.uid == request.auth.uid) || ngoIsAdmin();
+      }
+
+      // ---------------------------------------------------------- comments (checked before they show)
+      // One per person per group (id <group>_<uid>). Every new or edited comment
+      // waits for an admin; only approved ones are public. No money, ever.
+      match /comments/{id} {
+        function ngoNextComment() { return request.resource.data; }
+        allow get: if (ngoSignedIn() && id.matches(".*_" + request.auth.uid))
+          || (resource != null && resource.data.status == "approved")
+          || ngoIsAdmin();
+        allow list: if resource.data.status == "approved" || ngoIsAdmin();
+        allow create, update: if ngoSignedIn()
+          && id == ngoNextComment().gid + "_" + request.auth.uid
+          && ngoNextComment().keys().hasOnly(["gid", "gname", "state", "district", "uid", "name", "text", "contact", "status", "at"])
+          && ngoNextComment().uid == request.auth.uid && ngoNextComment().status == "pending"
+          && ngoNextComment().gid is string && ngoNextComment().gid.matches("[a-z0-9-]{1,200}")
+          && ngoShortOk(ngoNextComment().gname, 200)
+          && ngoShortOk(ngoNextComment().state, 60) && ngoShortOk(ngoNextComment().district, 60)
+          && ngoShortOk(ngoNextComment().name, 40)
+          && ngoTextOk(ngoNextComment().text, 1000) && ngoNextComment().text.size() >= 3
+          && ngoTextOk(ngoNextComment().contact, 200)
+          && ngoNextComment().at == request.time;
+        allow update: if ngoIsAdmin()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["status", "modBy", "modAt", "modNote"])
+          && request.resource.data.status in ["approved", "rejected"]
+          && request.resource.data.modBy == request.auth.uid && request.resource.data.modAt == request.time
+          && ngoShortOk(request.resource.data.get("modNote", ""), 300);
+        allow delete: if (ngoSignedIn() && resource.data.uid == request.auth.uid) || ngoIsAdmin();
+      }
     }
+    // ===== NGO-DIRECTORY END =====
   }
 }

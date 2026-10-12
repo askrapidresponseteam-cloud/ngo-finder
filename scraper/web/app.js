@@ -20,7 +20,7 @@
     try { return s && s.src ? new URL(".", s.src).href : ""; } catch (e) { return ""; }
   })();
   var ROOT = null, SITE = "Animal NGOs of India", SUFFIX = "";
-  var SPRITE = '<svg class="sprite" aria-hidden="true"><defs><symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></symbol><symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></symbol><symbol id="i-search" viewBox="0 0 24 24"><circle cx="10" cy="10" r="7"/><path d="m15 15 6 6"/></symbol><symbol id="i-filter" viewBox="0 0 24 24"><path d="M3 7h18M3 17h18"/><circle cx="9" cy="7" r="3" class="hole"/><circle cx="15" cy="17" r="3" class="hole"/></symbol><symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></symbol><symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></symbol><symbol id="i-arrow" viewBox="0 0 24 24"><path d="M7 17 17 7M7 7h10v10"/></symbol><symbol id="i-back" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></symbol><symbol id="i-heart" viewBox="0 0 24 24"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></symbol><symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol><symbol id="i-paw" viewBox="0 0 24 24"><ellipse cx="12" cy="16" rx="4.5" ry="3.8"/><circle cx="6" cy="10.5" r="1.9"/><circle cx="9.6" cy="6.6" r="1.9"/><circle cx="14.4" cy="6.6" r="1.9"/><circle cx="18" cy="10.5" r="1.9"/></symbol><symbol id="i-leaf" viewBox="0 0 24 24"><path d="M5 19c0-8 5-14 15-14 0 10-6 15-14 15"/><path d="M5 19 13 11"/></symbol><symbol id="i-cow" viewBox="0 0 24 24"><path d="M6 8 3 6M18 8l3-2"/><rect x="6" y="7" width="12" height="11" rx="5"/><path d="M9.5 15h.01M14.5 15h.01"/></symbol></defs></svg>';
+  var SPRITE = '<svg class="sprite" aria-hidden="true"><defs><symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></symbol><symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></symbol><symbol id="i-search" viewBox="0 0 24 24"><circle cx="10" cy="10" r="7"/><path d="m15 15 6 6"/></symbol><symbol id="i-filter" viewBox="0 0 24 24"><path d="M3 7h18M3 17h18"/><circle cx="9" cy="7" r="3" class="hole"/><circle cx="15" cy="17" r="3" class="hole"/></symbol><symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></symbol><symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></symbol><symbol id="i-arrow" viewBox="0 0 24 24"><path d="M7 17 17 7M7 7h10v10"/></symbol><symbol id="i-back" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></symbol><symbol id="i-heart" viewBox="0 0 24 24"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></symbol><symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol><symbol id="i-paw" viewBox="0 0 24 24"><ellipse cx="12" cy="16" rx="4.5" ry="3.8"/><circle cx="6" cy="10.5" r="1.9"/><circle cx="9.6" cy="6.6" r="1.9"/><circle cx="14.4" cy="6.6" r="1.9"/><circle cx="18" cy="10.5" r="1.9"/></symbol><symbol id="i-leaf" viewBox="0 0 24 24"><path d="M5 19c0-8 5-14 15-14 0 10-6 15-14 15"/><path d="M5 19 13 11"/></symbol><symbol id="i-cow" viewBox="0 0 24 24"><path d="M6 8 3 6M18 8l3-2"/><rect x="6" y="7" width="12" height="11" rx="5"/><path d="M9.5 15h.01M14.5 15h.01"/></symbol><symbol id="i-locate" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></symbol><symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></symbol><symbol id="i-phone" viewBox="0 0 24 24"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a1 1 0 0 1-1 1A16 16 0 0 1 4 5a1 1 0 0 1 1-1z"/></symbol></defs></svg>';
   function mount() {
     var host = document.getElementById("ngo-app");
     if (!host || document.getElementById("view")) return;
@@ -35,14 +35,16 @@
       '<button type="button" data-go="needs" id="needsBtn" hidden>Needs</button>' +
       '<button type="button" data-go="about">About the data</button></nav></div>' +
       '<section class="intro"><div class="intro-text"><div class="crumbs" id="crumbs"></div>' +
-      '<h1 id="title">Animal NGOs of India</h1><div class="muted" id="sub">Loading the directory...</div></div>' +
-      '<div class="tools"><button class="round" id="filterBtn" type="button" aria-label="Filters" aria-expanded="false" aria-controls="filters">' +
-      '<svg class="icon"><use href="#i-filter"/></svg><span class="dot" id="filterDot"></span></button>' +
-      '<button class="pill blue" id="share" type="button"><svg class="icon"><use href="#i-link"/></svg>Copy link</button></div></section>' +
-      '<header class="top"><nav class="types" id="types" aria-label="Type of group"></nav>' +
+      '<h1 id="title">Animal NGOs of India</h1><div class="muted" id="sub">Loading the directory...</div></div></section>' +
+      '<header class="top"><div class="finderslot" id="finderSlot"></div>' +
       '<label class="searchbox" id="searchbox"><svg class="icon"><use href="#i-search"/></svg>' +
       '<input id="q" type="search" autocomplete="off" placeholder="Group, person or town" aria-label="Search groups, people or towns">' +
       '<button class="clear" id="clear" type="button" aria-label="Clear search"><svg class="icon"><use href="#i-x"/></svg></button></label></header>' +
+      '<div class="subbar"><nav class="types" id="types" aria-label="Type of group"></nav>' +
+      '<div class="tools"><button class="round" id="filterBtn" type="button" aria-label="Filters" aria-expanded="false" aria-controls="filters">' +
+      '<svg class="icon"><use href="#i-filter"/></svg><span class="dot" id="filterDot"></span></button>' +
+      '<button class="pill blue" id="share" type="button" aria-label="Copy link"><svg class="icon"><use href="#i-link"/></svg><span class="tl">Copy link</span></button>' +
+      '<button class="pill" id="csv" type="button" aria-label="Download CSV"><svg class="icon"><use href="#i-download"/></svg><span class="tl">Download CSV</span></button></div></div>' +
       '<div class="filters card" id="filters" hidden>' +
       '<label><input type="checkbox" id="fContact"> Has a phone or email</label>' +
       '<label><input type="checkbox" id="fPeople"> We know who runs it</label>' +
@@ -450,6 +452,106 @@
     return spots;
   }
 
+  // ------------------------------------------------------ the easy way in
+  // Near me, or a state then a district: the quickest way to groups close by.
+  function finder() {
+    var all = pool();
+    var counts = countBy(all, function (o) { return o.st; });
+    var dcounts = countBy(all, function (o) { return o.st + "|" + o.d; });
+    var near = el("button", { cls: "pill dark near", type: "button" }, [icon("i-locate"), el("span", { text: "Near me" })]);
+    on(near, function () { nearMe(near); });
+    var sSel = el("select", { "aria-label": "State" });
+    sSel.appendChild(el("option", { value: "", text: "Choose a state" }));
+    Object.keys(GEO).filter(function (x) { return counts[x]; }).sort().forEach(function (x) {
+      var o = el("option", { value: x, text: x + " (" + fmt(counts[x]) + ")" });
+      o.selected = x === st.state;
+      sSel.appendChild(o);
+    });
+    sSel.addEventListener("change", function () { go(sSel.value ? { state: sSel.value } : {}); });
+    var kids = [near, sSel];
+    if (st.state && GEO[st.state]) {
+      var dSel = el("select", { "aria-label": "District" });
+      dSel.appendChild(el("option", { value: "", text: "Choose a district" }));
+      GEO[st.state].map(function (d) { return d[0]; }).filter(function (d) { return dcounts[st.state + "|" + d]; }).sort().forEach(function (d) {
+        var o = el("option", { value: d, text: d + " (" + fmt(dcounts[st.state + "|" + d]) + ")" });
+        o.selected = d === st.district;
+        dSel.appendChild(o);
+      });
+      dSel.addEventListener("change", function () { go({ state: st.state, district: dSel.value || null }); });
+      kids.push(dSel);
+    }
+    return el("div", { cls: "finder" }, kids);
+  }
+  function showFinder() {
+    var slot = $("finderSlot");
+    if (slot) { slot.textContent = ""; slot.appendChild(finder()); } else view.appendChild(finder());
+  }
+  function nearMe(btn) {
+    var label = btn.lastChild;
+    function done(msg) { btn.disabled = false; label.textContent = "Near me"; if (msg) toast(msg); }
+    if (!navigator.geolocation) { done("Location is not available here. Choose a state instead."); return; }
+    btn.disabled = true; label.textContent = "Finding you...";
+    navigator.geolocation.getCurrentPosition(function (pos) {
+      var lat = pos.coords.latitude, lon = pos.coords.longitude, k = Math.cos(lat * Math.PI / 180);
+      var counts = countBy(pool(), function (o) { return o.st + "|" + o.d; });
+      var best = null, nearest = null;
+      Object.keys(GEO).forEach(function (s) {
+        GEO[s].forEach(function (d) {
+          if (d[1] == null) return;
+          var dist = Math.pow(d[1] - lat, 2) + Math.pow((d[2] - lon) * k, 2);
+          if (!nearest || dist < nearest.dist) nearest = { s: s, d: d[0], dist: dist };
+          if (counts[s + "|" + d[0]] && (!best || dist < best.dist)) best = { s: s, d: d[0], dist: dist };
+        });
+      });
+      if (!best || best.dist > 9) { done("No groups listed near you yet. Choose a state instead."); return; }
+      done(nearest.d !== best.d ? "None listed in " + nearest.d + " yet, so this shows " + best.d + ", the nearest with groups." : "");
+      go({ state: best.s, district: best.d });
+    }, function () { done("Location is off. Allow it, or choose a state instead."); }, { timeout: 12000, maximumAge: 600000 });
+  }
+
+  // ------------------------------------------------------------ CSV download
+  // Whatever the page shows (India, a state, a district, a search, with the
+  // type and filters applied), every group in it, not just the first page.
+  function currentList() {
+    if (st.q) {
+      var r = search(st.q);
+      var fix = !r.list.length && r.suggest.filter(function (x) { return x.fix; })[0];
+      if (fix) r = search(fix.q);
+      return r.list.map(function (x) { return x.o; });
+    }
+    if (st.state) return pool({ state: st.state, district: st.district });
+    return pool();
+  }
+  function csvCell(v) {
+    v = v == null ? "" : String(v);
+    if (/^[=+\-@\t\r]/.test(v)) v = "'" + v;  // never a spreadsheet formula
+    return /[",\r\n]/.test(v) ? "\"" + v.replace(/"/g, "\"\"") + "\"" : v;
+  }
+  // +91 numbers as dialled inside India (0 and the number), so spreadsheets keep them as text.
+  function phoneOut(p) { return /^\+91[\s-]?/.test(p) ? "0" + p.replace(/^\+91[\s-]?/, "") : p; }
+  function downloadCsv() {
+    var list = currentList();
+    if (!list.length) { toast("Nothing to download here."); return; }
+    var rows = [["Name", "Also known as", "Type", "Phone", "Other phones", "Email", "Other emails", "Website", "Social pages",
+      "Address", "Town or area", "District", "State", "Who runs it", "AWBI code", "AWBI valid till", "Verified by the federation",
+      "Found only by web search", "Notes", "Map", "Sources"]];
+    list.forEach(function (o) {
+      rows.push([o.n, o.k.join("; "), o.c.map(function (c) { return TYPE_LABEL[c]; }).join("; "),
+        o.p[0] ? phoneOut(o.p[0]) : "", o.p.slice(1).map(phoneOut).join("; "), o.e[0] || "", o.e.slice(1).join("; "),
+        o.w || "", o.s.join("; "), o.ad || o.ra || "", o.a || "", o.d === "Unknown" ? "" : o.d, o.st === "Unknown" ? "" : o.st,
+        o.pp.map(function (x) { return x.n + (x.r ? " (" + x.r + ")" : ""); }).join("; "), o.ac || "", o.av || "",
+        VERIFIED[o._id] ? "Yes" : "", o.u ? "Yes" : "", o.nt.join(". "), o.m || mapsSearch(o), o.sr.join(" ")]);
+    });
+    var text = "\ufeff" + rows.map(function (r) { return r.map(csvCell).join(","); }).join("\r\n") + "\r\n";
+    var where = st.q ? "search " + st.q : st.district ? st.district + " " + st.state : st.state || "india";
+    var name = "animal-ngos-" + slugify(where + (st.cat !== "all" ? " " + st.cat : "")) + ".csv";
+    var url = URL.createObjectURL(new Blob([text], { type: "text/csv;charset=utf-8" }));
+    var a = el("a", { href: url, download: name });
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 10000);
+    toast("Downloaded " + plural(list.length, "group") + " (" + name + ")");
+  }
+
   // ---------------------------------------------------------- dashboard bits
   function card(cls, kids) { return el("section", { cls: "card " + (cls || "") }, kids); }
   function corner(label, fn) {
@@ -574,6 +676,7 @@
   function render() {
     view.textContent = "";
     railOn();
+    if ($("finderSlot")) showFinder();
     if (st.q) renderSearch();
     else if (st.v === "states") renderStates();
     else if (st.v === "needs" && FED) FED.needsView(view, { setHeader: setHeader, go: go });
@@ -588,6 +691,7 @@
     var states = stateItems(list, false);
     setHeader([], "Animal NGOs of India", plural(list.length, "group") + " in " + plural(states.length, "state") +
       (META.date ? ". Updated " + META.date + "." : "."));
+    if (!$("finderSlot")) showFinder();
     var map = card("mapcard", [
       el("div", { cls: "label", text: "Groups on the map" }),
       el("div", { cls: "number", text: fmt(list.length) }),
@@ -620,6 +724,7 @@
     var withGroups = items.filter(function (x) { return x.n; });
     setHeader([["India", function () { go({}); }]], sName(s),
       plural(list.length, "group") + (all ? " in " + fmt(withGroups.filter(function (x) { return x.name !== "District not known"; }).length) + " of " + plural(all, "district") : "") + ".");
+    if (!$("finderSlot")) showFinder();
     var spots = districtSpots(list, s);
     var bbox = bboxOf(spots);
     var kids = [];
@@ -649,6 +754,7 @@
     var list = pool({ state: st.state, district: st.district });
     setHeader([["India", function () { go({}); }], [sName(st.state), function () { go({ state: st.state }); }]],
       dName(st.district), plural(list.length, "group") + " in " + dName(st.district) + ", " + sName(st.state) + ".");
+    if (!$("finderSlot")) showFinder();
     results(list, null, false);
   }
 
@@ -694,7 +800,9 @@
     results(r.list.map(function (x) { return x.o; }), null, true, null);
   }
 
+  function contactRank(o) { return o.p.length ? 0 : o.e.length ? 1 : (o.w || o.s.length) ? 2 : 3; }
   function results(list, heading, showDistrict, extra) {
+    if (!st.q) list = list.slice().sort(function (a, b) { return contactRank(a) - contactRank(b); });
     if (heading || extra) {
       view.appendChild(el("div", { cls: "resultbar" }, [
         el("div", null, [heading ? el("h2", { text: heading }) : null, heading ? el("div", { cls: "muted", text: plural(list.length, "group") }) : null]),
@@ -779,10 +887,30 @@
       li.classList.toggle("open", open);
       head.setAttribute("aria-expanded", String(open));
     });
-    li.appendChild(head); li.appendChild(detail);
+    li.appendChild(head);
+    var quick = quickContacts(o);
+    if (quick) li.appendChild(quick);
+    li.appendChild(detail);
     return li;
   }
 
+  function telOf(p) { return "tel:" + p.replace(/[^\d+]/g, ""); }
+  function socialName(u) { return /instagram/i.test(u) ? "Instagram" : /facebook/i.test(u) ? "Facebook" : /youtube/i.test(u) ? "YouTube" : /twitter|x\.com/i.test(u) ? "X" : "Social page"; }
+  function mapsSearch(o) {
+    return "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent([o.n, o.ad || o.a, o.d !== "Unknown" ? o.d : "", o.st].filter(Boolean).join(", "));
+  }
+  function findNumber(o) {
+    return "https://www.google.com/search?q=" + encodeURIComponent("\"" + o.n + "\" " + (o.d !== "Unknown" ? o.d : o.st) + " contact number");
+  }
+  // Reach them without opening the group: first number, email, website.
+  function quickContacts(o) {
+    var kids = [];
+    if (o.p[0]) kids.push(el("a", { cls: "qc call", href: telOf(o.p[0]), "aria-label": "Call " + o.n + " on " + o.p[0] }, [icon("i-phone"), o.p[0]]));
+    if (o.e[0]) kids.push(el("a", { cls: "qc", href: "mailto:" + o.e[0], text: "Email" }));
+    var w = safe(o.w) || safe(o.s[0]);
+    if (w) kids.push(el("a", { cls: "qc", href: w, target: "_blank", rel: "noopener", text: o.w ? "Website" : socialName(o.s[0]) }));
+    return kids.length ? el("div", { cls: "quick" }, kids) : null;
+  }
   function act(label, href, primary) {
     href = safe(href); if (!href) return null;
     var a = el("a", { cls: "act" + (primary ? " primary" : ""), href: href, text: label });
@@ -805,14 +933,26 @@
   }
 
   function fillDetail(d, o) {
-    var acts = el("div", { cls: "actions" }, [
-      o.p[0] ? act("Call " + o.p[0], "tel:" + o.p[0].replace(/[^\d+]/g, ""), true) : null,
-      o.e[0] ? act("Email", "mailto:" + o.e[0], !o.p[0]) : null,
-      act("Website", o.w),
-      o.s[0] ? act(/instagram/i.test(o.s[0]) ? "Instagram" : /facebook/i.test(o.s[0]) ? "Facebook" : "Social page", o.s[0]) : null,
-      act("Map", o.m)
-    ]);
-    if (acts.children.length) d.appendChild(acts);
+    d.appendChild(el("div", { cls: "sec", text: "Contact" }));
+    var acts = el("div", { cls: "actions" });
+    if (o.p.length || o.e.length) {
+      o.p.slice(0, 2).forEach(function (x, i) { add(acts, [act("Call " + x, telOf(x), i === 0)]); });
+      if (o.e[0]) add(acts, [act("Email " + o.e[0], "mailto:" + o.e[0], !o.p.length)]);
+      add(acts, [act("Website", o.w), o.s[0] ? act(socialName(o.s[0]), o.s[0]) : null, act("Directions", o.m || mapsSearch(o))]);
+    } else {
+      d.appendChild(el("p", { cls: "none", text: "No phone or email listed yet. One tap usually finds it:" }));
+      add(acts, [act("Find their number", findNumber(o), true), act("Find on Google Maps", mapsSearch(o)),
+        act("Website", o.w), o.s[0] ? act(socialName(o.s[0]), o.s[0]) : null]);
+    }
+    d.appendChild(acts);
+    if (o.ad || o.ra) d.appendChild(el("p", { cls: "addr", text: o.ad || o.ra }));
+    var said = el("div", { cls: "said" });
+    d.appendChild(said);
+    if (FED && FED.feedback) FED.feedback(said, o);
+    else said.appendChild(el("p", { cls: "fbq" }, ["Number not working, or the group has closed? ",
+      el("a", { href: "mailto:ask@rapid-response.in?subject=" + encodeURIComponent("NGO directory: " + o.n) +
+        "&body=" + encodeURIComponent("Group: " + o.n + "\nPlace: " + [o.d, o.st].join(", ") + "\nId: " + o._id + "\n\nWhat did not work, or what should change:\n"),
+        text: "Tell us" })]));
 
     d.appendChild(el("div", { cls: "sec", text: "Who runs it" }));
     if (o.pp.length) {
@@ -834,10 +974,9 @@
     var dl = el("dl");
     function line(k, v) { if (v) { dl.appendChild(el("dt", { text: k })); dl.appendChild(typeof v === "string" ? el("dd", { text: v }) : el("dd", null, [v])); } }
     if (o.k.length) line("Also known as", o.k.join(", "));
-    if (o.ad && o.ad !== o.a) line("Address", o.ad);
-    if (o.ra && o.ra !== o.ad) line(o.ad ? "Registered address" : "Address", o.ra);
+    if (o.ad && o.ra && o.ad !== o.ra) line("Other address", o.ra);
     line("Area", [o.a, o.d !== "Unknown" ? o.d : "", o.st !== "Unknown" ? o.st : ""].filter(Boolean).join(", "));
-    line("Phones", linkList(o.p, function (x) { return "tel:" + x.replace(/[^\d+]/g, ""); }));
+    line("Phones", linkList(o.p, telOf));
     line("Emails", linkList(o.e, function (x) { return "mailto:" + x; }));
     line("Website", linkList(o.w ? [o.w] : [], function (x) { return x; }));
     line("Social", linkList(o.s, function (x) { return x; }));
@@ -905,6 +1044,14 @@
     return el("div", null, [t, body]);
   }
 
+  function uniqPhones(list) {
+    var seen = {};
+    return list.filter(function (p) {
+      var k = p.replace(/\D/g, "").slice(-10);
+      if (!k || seen[k]) return false;
+      seen[k] = 1; return true;
+    });
+  }
   function boot(DB) {
     META = DB.meta || {};
     GEO = META.states || {};
@@ -913,7 +1060,7 @@
     ORGS.forEach(function (o) {
       o.k = o.k || []; o.sr = o.sr || []; o.st = o.st || "Unknown";
       o.pp.sort(function (a, b) { return roleRank(a.r) - roleRank(b.r); });
-      o.p = o.p || []; o.e = o.e || []; o.s = o.s || []; o.nt = o.nt || []; o.src = o.src || [];
+      o.p = uniqPhones(o.p || []); o.e = o.e || []; o.s = o.s || []; o.nt = o.nt || []; o.src = o.src || [];
       o._id = gidOf(o);
     });
 
@@ -938,6 +1085,7 @@
       $(p[0]).addEventListener("change", function (e) { st[p[1]] = e.target.checked; st.shown = PAGE; syncFilterDot(); render(); });
     });
     on($("share"), copyLink);
+    if ($("csv")) on($("csv"), downloadCsv);
 
     Array.prototype.forEach.call(scope().querySelectorAll("[data-go]"), function (b) {
       on(b, function () {
@@ -948,6 +1096,7 @@
         else if (g === "search") { toTop(); q.focus(); }
         else if (g === "filters") toggleFilters();
         else if (g === "share") copyLink();
+        else if (g === "csv") downloadCsv();
         else if (g === "about") foot.scrollIntoView({ behavior: "smooth" });
       });
     });

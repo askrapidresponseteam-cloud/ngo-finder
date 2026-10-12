@@ -953,6 +953,26 @@ class TestRapidResponseEmbed(unittest.TestCase):
             self.assertIn('id="%s"' % i, js, i)
 
 
+class TestRrtRules(unittest.TestCase):
+    def test_block_goes_into_rrt_rules_once(self):
+        sys.path.insert(0, os.path.join(ROOT, "tools"))
+        import rrt_rules
+        with open(os.path.join(ROOT, "tests", "rules", "rrt-base.rules"), encoding="utf-8") as fh:
+            base = fh.read()
+        once = rrt_rules.merge(base)
+        self.assertEqual(once, rrt_rules.merge(once))
+        self.assertEqual(once.count("NGO-DIRECTORY START"), 1)
+        self.assertEqual(once.count("{"), once.count("}"))
+        self.assertTrue(once.startswith(base[:base.rindex("}", 0, base.rindex("}"))].rstrip()))
+        block = rrt_rules.block()
+        self.assertIn("match /ngo/dir {", block)
+        # every helper in the block is the directory's own, so nothing clashes with RRT's
+        for name in re.findall(r"function (\w+)\(", block):
+            self.assertTrue(name.startswith("ngo"), name)
+        for path in re.findall(r"/databases/\$\(database\)/documents/([a-z_]+)/", block):
+            self.assertIn(path, ("ngo", "admins"), path)
+
+
 class TestFederation(unittest.TestCase):
     def test_site_build_ships_federation_files_but_not_the_mock(self):
         out = tempfile.mkdtemp()
@@ -988,9 +1008,10 @@ class TestFederation(unittest.TestCase):
     def test_rules_have_the_verification_gates(self):
         with open(os.path.join(ROOT, "firestore.rules"), encoding="utf-8") as fh:
             rules = fh.read()
-        for must in ('app().get("docsOk", false) == true', "app().vouch.ok == true", "app().vouch.by != app().uid",
-                     "app().vouch.by != request.auth.uid", 'app().visit.ok == true', 'audited("vouch", id)',
-                     'app().vouch.role == "coordinator" || app().get("needsVisit", false) == true',
+        for must in ('ngoApp().get("docsOk", false) == true', "ngoApp().vouch.ok == true", "ngoApp().vouch.by != ngoApp().uid",
+                     "ngoApp().vouch.by != request.auth.uid", 'ngoApp().visit.ok == true', 'ngoAudited("vouch", id)',
+                     'ngoApp().vouch.role == "coordinator" || ngoApp().get("needsVisit", false) == true',
+                     'ngoNextComment().status == "pending"', 'allow list: if resource.data.status == "approved" || ngoIsAdmin();',
                      'id.matches(".*_" + request.auth.uid)', 'allow update, delete: if false;'):
             self.assertIn(must, rules)
 

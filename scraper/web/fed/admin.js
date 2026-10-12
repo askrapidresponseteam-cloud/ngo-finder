@@ -33,7 +33,7 @@ function signIn() {
 }
 
 function tabs() {
-  const parts = [["queue", "Applications", queue], ["reports", "Reports", reports], ["coord", "Coordinators", coordinators], ["audit", "Audit log", audit]];
+  const parts = [["queue", "Applications", queue], ["comments", "Comments", comments], ["reports", "Reports", reports], ["coord", "Coordinators", coordinators], ["audit", "Audit log", audit]];
   const bar = el("nav", { cls: "types tabs" }), body = el("div");
   const show = (k) => {
     Array.from(bar.children).forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.k === k)));
@@ -160,6 +160,36 @@ function appItem(a, apps, index, refresh) {
   }
   li.appendChild(head); li.appendChild(detail);
   return li;
+}
+
+// ------------------------------------------------------------------ comments
+// Comments and shared contacts wait here; only approved ones show in the directory.
+async function comments(body) {
+  const list = await B.pendingComments();
+  list.sort((a, b) => ((a.at && a.at.toMillis ? a.at.toMillis() : 0) - (b.at && b.at.toMillis ? b.at.toMillis() : 0)));
+  setSub(list.length + " comment(s) waiting.");
+  if (!list.length) return body.appendChild(card([el("p", { cls: "muted", text: "Nothing waiting." })]));
+  body.appendChild(el("p", { cls: "note", text: "Approve only what helps someone reach or help the group. Reject accusations, personal attacks, money requests and anything you cannot stand behind." }));
+  const ul = el("ul", { cls: "list" });
+  list.forEach((c) => {
+    const note = el("input", { maxlength: "300", placeholder: "Reason (shown only here)" });
+    const act = (status) => async () => {
+      try { await B.moderate(c, status, note.value.trim()); toast(status === "approved" ? "Approved." : "Rejected."); comments(clear(body)); } catch (e) { toast(errText(e)); }
+    };
+    ul.appendChild(el("li", { cls: "item open" }, [el("div", { cls: "detail" }, [
+      el("div", { cls: "nm", text: c.gname || c.gid }),
+      el("p", { cls: "fhint", text: [c.district, c.state].filter(Boolean).join(", ") + ". From " + (c.name || "A visitor") + ", " + fmtDate(c.at) }),
+      el("p", { text: c.text || "" }),
+      c.contact ? el("p", null, [el("b", { text: "Shared contact: " }), c.contact]) : null,
+      el("div", { cls: "row-actions" }, [
+        el("a", { cls: "pill", href: "./#q=" + encodeURIComponent(c.gname || ""), target: "_blank", rel: "noopener", text: "Open in directory" }),
+        note,
+        el("button", { cls: "pill blue", type: "button", text: "Approve", on: { click: act("approved") } }),
+        el("button", { cls: "pill danger", type: "button", text: "Reject", on: { click: act("rejected") } })
+      ])
+    ])]));
+  });
+  body.appendChild(ul);
 }
 
 // ------------------------------------------------------------------ reports

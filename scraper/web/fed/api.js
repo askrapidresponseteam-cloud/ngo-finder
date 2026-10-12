@@ -25,7 +25,17 @@ export async function backend() {
   return api;
 }
 
+// Everything lives under ngo/dir/ in Rapid Response's Firebase project, apart
+// from the app's own data (see firestore.rules).
+const ROOT = "ngo/dir/";
+function col(name) { return fb.collection(db, ROOT + name); }
+function ref(p) { return fb.doc(db, ROOT + p); }
 function now() { return fb.serverTimestamp(); }
+// The name shown on a comment: a first name, never the email address.
+function shortName(u) {
+  const n = String((u && u.displayName) || "").trim().split(/\s+/)[0];
+  return (n || "A visitor").slice(0, 40);
+}
 function snapList(s) { return s.docs.map((d) => Object.assign({ id: d.id }, d.data())); }
 
 const api = {
@@ -56,9 +66,9 @@ const api = {
     if (!u) return { admin: false, coordinator: null, member: null };
     const email = (u.email || "").toLowerCase();
     let admin = false, coordinator = null, member = null;
-    try { await fb.getDoc(fb.doc(db, "config/admins")); admin = true; } catch (e) { admin = false; }
-    try { const c = await fb.getDoc(fb.doc(db, "coordinators/" + email)); if (c.exists()) coordinator = c.data(); } catch (e) { /* none */ }
-    try { const m = await fb.getDoc(fb.doc(db, "members/" + u.uid)); if (m.exists()) member = m.data(); } catch (e) { /* none */ }
+    try { await fb.getDoc(ref("config/admins")); admin = true; } catch (e) { admin = false; }
+    try { const c = await fb.getDoc(ref("coordinators/" + email)); if (c.exists()) coordinator = c.data(); } catch (e) { /* none */ }
+    try { const m = await fb.getDoc(ref("members/" + u.uid)); if (m.exists()) member = m.data(); } catch (e) { /* none */ }
     return { admin, coordinator, member };
   },
 
@@ -68,39 +78,39 @@ const api = {
     const rec = Object.assign({}, data, {
       uid: u.uid, email: (u.email || "").toLowerCase(), status: "submitted", rev: 0, createdAt: now(), updatedAt: now()
     });
-    const ref = await fb.addDoc(fb.collection(db, "applications"), rec);
-    return ref.id;
+    const added = await fb.addDoc(col("applications"), rec);
+    return added.id;
   },
   async myApplications() {
     const u = auth.currentUser;
-    return snapList(await fb.getDocs(fb.query(fb.collection(db, "applications"), fb.where("uid", "==", u.uid))));
+    return snapList(await fb.getDocs(fb.query(col("applications"), fb.where("uid", "==", u.uid))));
   },
   // Any change goes back to "submitted" and the documents get checked again.
   async updateMine(app, patch) {
-    await fb.updateDoc(fb.doc(db, "applications/" + app.id), Object.assign({}, patch, {
+    await fb.updateDoc(ref("applications/" + app.id), Object.assign({}, patch, {
       status: "submitted", docsOk: false, rev: (app.rev || 0) + 1, updatedAt: now()
     }));
   },
   async forCoordinator(c) {
     const q = c.district === "*"
-      ? fb.query(fb.collection(db, "applications"), fb.where("state", "==", c.state))
-      : fb.query(fb.collection(db, "applications"), fb.where("state", "==", c.state), fb.where("district", "==", c.district));
+      ? fb.query(col("applications"), fb.where("state", "==", c.state))
+      : fb.query(col("applications"), fb.where("state", "==", c.state), fb.where("district", "==", c.district));
     return snapList(await fb.getDocs(q));
   },
   async forVoucher() {
     const email = (auth.currentUser.email || "").toLowerCase();
-    return snapList(await fb.getDocs(fb.query(fb.collection(db, "applications"), fb.where("voucherEmail", "==", email))));
+    return snapList(await fb.getDocs(fb.query(col("applications"), fb.where("voucherEmail", "==", email))));
   },
   async allApplications() {
-    return snapList(await fb.getDocs(fb.query(fb.collection(db, "applications"), fb.orderBy("createdAt", "desc"), fb.limit(500))));
+    return snapList(await fb.getDocs(fb.query(col("applications"), fb.orderBy("createdAt", "desc"), fb.limit(500))));
   },
 
   // Each review step bumps the application's revision and writes its own audit
   // entry, named <step>_<application>_<revision>_<reviewer>, in the same batch.
   _step(b, app, action, patch, note) {
     const u = auth.currentUser, rev = (app.rev || 0) + 1;
-    b.update(fb.doc(db, "applications/" + app.id), Object.assign({ updatedAt: now(), rev }, patch));
-    b.set(fb.doc(db, "audit/" + action + "_" + app.id + "_" + rev + "_" + u.uid),
+    b.update(ref("applications/" + app.id), Object.assign({ updatedAt: now(), rev }, patch));
+    b.set(ref("audit/" + action + "_" + app.id + "_" + rev + "_" + u.uid),
       { by: u.uid, email: (u.email || "").toLowerCase(), action, target: app.id, note: (note || "").slice(0, 1900), at: now() });
   },
   // role: "coordinator" (for that place) or "member" (of a verified group named by the applicant)
@@ -125,14 +135,14 @@ const api = {
   async verify(app) {
     const u = auth.currentUser, b = fb.writeBatch(db);
     this._step(b, app, "decide", { status: "verified", docsOk: true, needsVisit: !!app.needsVisit, reviewedBy: u.uid }, "verified");
-    b.set(fb.doc(db, "profiles/" + app.gid), {
+    b.set(ref("profiles/" + app.gid), {
       appId: app.id, name: app.name, state: app.state, district: app.district, town: app.town || "",
       about: app.about || "", hours: "", phones: app.phone ? [app.phone] : [], emails: app.officialEmail ? [app.officialEmail] : [],
       website: app.website || "", members: [app.uid], regType: app.regType, regNumber: app.regNumber,
       capacity: { intake: "open", note: "" }, verifiedAt: now(), updatedAt: now()
     });
-    b.set(fb.doc(db, "members/" + app.uid), { gid: app.gid, email: app.email, appId: app.id, at: now() });
-    b.set(fb.doc(db, "public/index"), { verified: { [app.gid]: { n: app.name, st: app.state, d: app.district } }, last: app.gid }, { merge: true });
+    b.set(ref("members/" + app.uid), { gid: app.gid, email: app.email, appId: app.id, at: now() });
+    b.set(ref("public/index"), { verified: { [app.gid]: { n: app.name, st: app.state, d: app.district } }, last: app.gid }, { merge: true });
     await b.commit();
   },
 
@@ -140,12 +150,12 @@ const api = {
   async suspend(app, reason) {
     const u = auth.currentUser, b = fb.writeBatch(db);
     this._step(b, app, "decide", { status: "suspended", decision: reason, reviewedBy: u.uid }, "suspended: " + reason);
-    b.delete(fb.doc(db, "profiles/" + app.gid));
-    b.delete(fb.doc(db, "members/" + app.uid));
-    b.update(fb.doc(db, "public/index"), { ["verified." + app.gid]: fb.deleteField(), last: app.gid });
+    b.delete(ref("profiles/" + app.gid));
+    b.delete(ref("members/" + app.uid));
+    b.update(ref("public/index"), { ["verified." + app.gid]: fb.deleteField(), last: app.gid });
     // Their open needs come down too.
     for (const n of await this.needsFor(app.gid)) {
-      if (n.status === "open") b.update(fb.doc(db, "needs/" + n.id), { status: "removed" });
+      if (n.status === "open") b.update(ref("needs/" + n.id), { status: "removed" });
     }
     await b.commit();
   },
@@ -155,37 +165,37 @@ const api = {
   async addProof(dataUrl, name, state, district) {
     const u = auth.currentUser;
     const type = dataUrl.slice(5, dataUrl.indexOf(";"));
-    const mine = await fb.getDocs(fb.query(fb.collection(db, "proofs"), fb.where("uid", "==", u.uid)));
+    const mine = await fb.getDocs(fb.query(col("proofs"), fb.where("uid", "==", u.uid)));
     const used = new Set(mine.docs.map((d) => d.id));
     let n = 0;
     while (used.has(u.uid + "_" + n)) n++;
     if (n >= 30) throw new Error("You have sent the maximum number of documents. Share a Drive folder instead.");
     const id = u.uid + "_" + n;
-    await fb.setDoc(fb.doc(db, "proofs/" + id), { uid: u.uid, name, type, data: dataUrl, state, district, createdAt: now() });
+    await fb.setDoc(ref("proofs/" + id), { uid: u.uid, name, type, data: dataUrl, state, district, createdAt: now() });
     return id;
   },
   async proof(id) {
-    const s = await fb.getDoc(fb.doc(db, "proofs/" + id));
+    const s = await fb.getDoc(ref("proofs/" + id));
     return s.exists() ? Object.assign({ id }, s.data()) : null;
   },
 
   // ------------------------------------------------------------ profiles, needs
   async publicIndex() {
-    const s = await fb.getDoc(fb.doc(db, "public/index"));
+    const s = await fb.getDoc(ref("public/index"));
     return s.exists() ? s.data() : { verified: {} };
   },
   async profile(gid) {
-    const s = await fb.getDoc(fb.doc(db, "profiles/" + gid));
+    const s = await fb.getDoc(ref("profiles/" + gid));
     return s.exists() ? Object.assign({ id: gid }, s.data()) : null;
   },
   async saveProfile(gid, patch) {
-    await fb.updateDoc(fb.doc(db, "profiles/" + gid), Object.assign({}, patch, { updatedAt: now() }));
+    await fb.updateDoc(ref("profiles/" + gid), Object.assign({}, patch, { updatedAt: now() }));
   },
   async needsFor(gid) {
-    return snapList(await fb.getDocs(fb.query(fb.collection(db, "needs"), fb.where("gid", "==", gid))));
+    return snapList(await fb.getDocs(fb.query(col("needs"), fb.where("gid", "==", gid))));
   },
   async openNeeds(state, district) {
-    let q = fb.query(fb.collection(db, "needs"), fb.where("status", "==", "open"));
+    let q = fb.query(col("needs"), fb.where("status", "==", "open"));
     if (state) q = fb.query(q, fb.where("state", "==", state));
     if (district) q = fb.query(q, fb.where("district", "==", district));
     const t = Date.now();
@@ -193,41 +203,70 @@ const api = {
   },
   async postNeed(profile, kind, text, urgent, days) {
     const u = auth.currentUser;
-    await fb.addDoc(fb.collection(db, "needs"), {
+    await fb.addDoc(col("needs"), {
       gid: profile.id, name: profile.name, state: profile.state, district: profile.district, kind, text, urgent: !!urgent,
       status: "open", by: u.uid, createdAt: now(), expiresAt: fb.Timestamp.fromMillis(Date.now() + Math.min(30, Math.max(1, days)) * 864e5)
     });
   },
-  async setNeed(id, status) { await fb.updateDoc(fb.doc(db, "needs/" + id), { status }); },
-  async removeNeed(id) { await fb.updateDoc(fb.doc(db, "needs/" + id), { status: "removed" }); },
+  async setNeed(id, status) { await fb.updateDoc(ref("needs/" + id), { status }); },
+  async removeNeed(id) { await fb.updateDoc(ref("needs/" + id), { status: "removed" }); },
 
   // ------------------------------------------------------------ reports, coordinators, audit
   async report(target, targetName, reason, text) {
     const u = auth.currentUser;
-    await fb.addDoc(fb.collection(db, "reports"), {
+    await fb.addDoc(col("reports"), {
       target, targetName, reason, text, uid: u.uid, email: (u.email || "").toLowerCase(), status: "open", createdAt: now()
     });
   },
   async reports() {
-    return snapList(await fb.getDocs(fb.query(fb.collection(db, "reports"), fb.where("status", "==", "open"))));
+    return snapList(await fb.getDocs(fb.query(col("reports"), fb.where("status", "==", "open"))));
   },
   async resolveReport(id, resolution) {
-    await fb.updateDoc(fb.doc(db, "reports/" + id), { status: "resolved", resolution, resolvedBy: auth.currentUser.uid, resolvedAt: now() });
+    await fb.updateDoc(ref("reports/" + id), { status: "resolved", resolution, resolvedBy: auth.currentUser.uid, resolvedAt: now() });
   },
-  async coordinators() { return snapList(await fb.getDocs(fb.collection(db, "coordinators"))); },
+  async coordinators() { return snapList(await fb.getDocs(col("coordinators"))); },
   async setCoordinator(email, state, district, name) {
     const b = fb.writeBatch(db), u = auth.currentUser;
-    b.set(fb.doc(db, "coordinators/" + email.toLowerCase()), { state, district, name: name || "", by: u.uid, at: now() });
-    b.set(fb.doc(db, "audit/coordinator_" + Date.now() + "_" + u.uid), { by: u.uid, email: (u.email || "").toLowerCase(), action: "coordinator", target: email, note: state + " / " + district, at: now() });
+    b.set(ref("coordinators/" + email.toLowerCase()), { state, district, name: name || "", by: u.uid, at: now() });
+    b.set(ref("audit/coordinator_" + Date.now() + "_" + u.uid), { by: u.uid, email: (u.email || "").toLowerCase(), action: "coordinator", target: email, note: state + " / " + district, at: now() });
     await b.commit();
   },
   async removeCoordinator(email) {
     const b = fb.writeBatch(db), u = auth.currentUser;
-    b.delete(fb.doc(db, "coordinators/" + email));
-    b.set(fb.doc(db, "audit/coordinator_" + Date.now() + "_" + u.uid), { by: u.uid, email: (u.email || "").toLowerCase(), action: "coordinator removed", target: email, note: "", at: now() });
+    b.delete(ref("coordinators/" + email));
+    b.set(ref("audit/coordinator_" + Date.now() + "_" + u.uid), { by: u.uid, email: (u.email || "").toLowerCase(), action: "coordinator removed", target: email, note: "", at: now() });
     await b.commit();
   },
+  // ------------------------------------------------------------ did you reach them? and comments
+  async checksFor(gid) {
+    return snapList(await fb.getDocs(fb.query(col("checks"), fb.where("gid", "==", gid))));
+  },
+  async check(gid, ok, why) {
+    const u = auth.currentUser;
+    await fb.setDoc(ref("checks/" + gid + "_" + u.uid), { gid, uid: u.uid, ok: !!ok, why: ok ? "" : (why || "other"), at: now() });
+  },
+  async commentsFor(gid) {
+    return snapList(await fb.getDocs(fb.query(col("comments"), fb.where("gid", "==", gid), fb.where("status", "==", "approved"))));
+  },
+  async myComment(gid) {
+    const s = await fb.getDoc(ref("comments/" + gid + "_" + auth.currentUser.uid));
+    return s.exists() ? Object.assign({ id: s.id }, s.data()) : null;
+  },
+  async comment(o, text, contact) {
+    const u = auth.currentUser;
+    await fb.setDoc(ref("comments/" + o.gid + "_" + u.uid), {
+      gid: o.gid, gname: o.name, state: o.state, district: o.district, uid: u.uid, name: shortName(u),
+      text, contact: contact || "", status: "pending", at: now()
+    });
+  },
+  async pendingComments() {
+    return snapList(await fb.getDocs(fb.query(col("comments"), fb.where("status", "==", "pending"), fb.limit(200))));
+  },
+  async moderate(c, status, note) {
+    await fb.updateDoc(ref("comments/" + c.id), { status, modBy: auth.currentUser.uid, modAt: now(), modNote: note || "" });
+  },
+
   async auditLog() {
-    return snapList(await fb.getDocs(fb.query(fb.collection(db, "audit"), fb.orderBy("at", "desc"), fb.limit(200))));
+    return snapList(await fb.getDocs(fb.query(col("audit"), fb.orderBy("at", "desc"), fb.limit(200))));
   }
 };

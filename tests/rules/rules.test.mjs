@@ -4,9 +4,14 @@ import { test, before, after, beforeEach } from "node:test";
 import { readFileSync } from "node:fs";
 import { initializeTestEnvironment, assertFails, assertSucceeds } from "@firebase/rules-unit-testing";
 import {
-  doc, getDoc, setDoc, updateDoc, deleteDoc, getDocs, collection, query, where, writeBatch,
+  doc as rawDoc, getDoc, setDoc, updateDoc, deleteDoc, getDocs, collection as rawCollection, query, where, writeBatch,
   serverTimestamp, Timestamp
 } from "firebase/firestore";
+
+// All directory data lives under ngo/dir/ (inside Rapid Response's project).
+const R = "ngo/dir/";
+const doc = (db, p) => rawDoc(db, R + p);
+const collection = (db, p) => rawCollection(db, R + p);
 
 const OWNER = "narenkumar19706@gmail.com";
 let env;
@@ -422,4 +427,77 @@ test("a removed need stays removed", async () => {
   await seedVerified();
   await seed(async (db) => setDoc(doc(db, "needs/n1"), Object.assign(need(), { status: "removed", createdAt: Timestamp.now() })));
   await assertFails(updateDoc(doc(applicant(), "needs/n1"), { status: "open" }));
+});
+
+
+// ------------------------------------------------------------- did you reach them?
+const check = (over = {}) => Object.assign({ gid: "awbi-ka004-1993", uid: "eve", ok: true, why: "", at: serverTimestamp() }, over);
+
+test("anyone signed in can say once per group whether the contacts worked", async () => {
+  await assertSucceeds(setDoc(doc(stranger(), "checks/awbi-ka004-1993_eve"), check()));
+  await assertSucceeds(setDoc(doc(stranger(), "checks/awbi-ka004-1993_eve"), check({ ok: false, why: "wrong_number" })));
+  await assertSucceeds(getDocs(query(collection(anon(), "checks"), where("gid", "==", "awbi-ka004-1993"))));
+});
+
+test("a check is one person's own, with a known reason, and no extra fields", async () => {
+  await assertFails(setDoc(doc(stranger(), "checks/awbi-ka004-1993_alice"), check({ uid: "alice" })));
+  await assertFails(setDoc(doc(stranger(), "checks/awbi-ka004-1993_eve"), check({ uid: "alice" })));
+  await assertFails(setDoc(doc(stranger(), "checks/other-group_eve"), check()));
+  await assertFails(setDoc(doc(stranger(), "checks/awbi-ka004-1993_eve"), check({ ok: true, why: "closed" })));
+  await assertFails(setDoc(doc(stranger(), "checks/awbi-ka004-1993_eve"), check({ ok: false, why: "they were rude" })));
+  await assertFails(setDoc(doc(stranger(), "checks/awbi-ka004-1993_eve"), check({ note: "hi" })));
+  await assertFails(setDoc(doc(as("eve", "eve@example.org", false), "checks/awbi-ka004-1993_eve"), check()));
+  await assertFails(setDoc(doc(anon(), "checks/awbi-ka004-1993_eve"), check()));
+});
+
+// ------------------------------------------------------------- comments
+const comment = (over = {}) => Object.assign({ gid: "awbi-ka004-1993", gname: "Compassion Unlimited Plus Action", state: "Karnataka",
+  district: "Bengaluru Urban", uid: "eve", name: "Eve", text: "They picked up at night and sent help.", contact: "", status: "pending", at: serverTimestamp() }, over);
+
+test("a comment starts as waiting, and only its writer and admins can see it then", async () => {
+  await assertSucceeds(setDoc(doc(stranger(), "comments/awbi-ka004-1993_eve"), comment()));
+  await assertSucceeds(getDoc(doc(stranger(), "comments/awbi-ka004-1993_eve")));
+  await assertSucceeds(getDoc(doc(owner(), "comments/awbi-ka004-1993_eve")));
+  await assertFails(getDoc(doc(applicant(), "comments/awbi-ka004-1993_eve")));
+  await assertFails(getDoc(doc(anon(), "comments/awbi-ka004-1993_eve")));
+  await assertFails(getDocs(query(collection(anon(), "comments"), where("gid", "==", "awbi-ka004-1993"))));
+  await assertSucceeds(getDoc(doc(applicant(), "comments/awbi-ka004-1993_alice")));  // their own, not written yet
+});
+
+test("nobody can publish their own comment, write as someone else, or ask for money", async () => {
+  await assertFails(setDoc(doc(stranger(), "comments/awbi-ka004-1993_eve"), comment({ status: "approved" })));
+  await assertFails(setDoc(doc(stranger(), "comments/awbi-ka004-1993_alice"), comment({ uid: "alice" })));
+  await assertFails(setDoc(doc(stranger(), "comments/awbi-ka004-1993_eve"), comment({ text: "Please send funds by UPI" })));
+  await assertFails(setDoc(doc(stranger(), "comments/awbi-ka004-1993_eve"), comment({ contact: "GPay 98450 00000" })));
+  await assertFails(setDoc(doc(stranger(), "comments/awbi-ka004-1993_eve"), comment({ text: "x".repeat(1001) })));
+  await assertFails(setDoc(doc(stranger(), "comments/awbi-ka004-1993_eve"), comment({ modBy: "eve" })));
+  await setDoc(doc(stranger(), "comments/awbi-ka004-1993_eve"), comment());
+  await assertFails(updateDoc(doc(stranger(), "comments/awbi-ka004-1993_eve"), { status: "approved", modBy: "eve", modAt: serverTimestamp() }));
+});
+
+test("an admin approves; then everyone sees it; an edit sends it back for a check", async () => {
+  await seedPeople();
+  await setDoc(doc(stranger(), "comments/awbi-ka004-1993_eve"), comment());
+  await assertFails(updateDoc(doc(admin2(), "comments/awbi-ka004-1993_eve"), { status: "approved", modBy: "owner", modAt: serverTimestamp() }));
+  await assertFails(updateDoc(doc(admin2(), "comments/awbi-ka004-1993_eve"), { status: "approved", text: "changed", modBy: "admin2", modAt: serverTimestamp() }));
+  await assertSucceeds(updateDoc(doc(admin2(), "comments/awbi-ka004-1993_eve"), { status: "approved", modBy: "admin2", modAt: serverTimestamp(), modNote: "" }));
+  await assertSucceeds(getDoc(doc(anon(), "comments/awbi-ka004-1993_eve")));
+  await assertSucceeds(getDocs(query(collection(anon(), "comments"), where("gid", "==", "awbi-ka004-1993"), where("status", "==", "approved"))));
+  await assertFails(setDoc(doc(stranger(), "comments/awbi-ka004-1993_eve"), comment({ status: "approved", text: "Edited after approval" })));
+  await assertSucceeds(setDoc(doc(stranger(), "comments/awbi-ka004-1993_eve"), comment({ text: "Edited after approval" })));
+  await assertFails(getDoc(doc(anon(), "comments/awbi-ka004-1993_eve")));
+});
+
+test("Rapid Response super admins can moderate; other RRT admins and suspended ones cannot", async () => {
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    const db = ctx.firestore();
+    await setDoc(rawDoc(db, "admins/sam@example.org"), { role: "super-admin", active: true });
+    await setDoc(rawDoc(db, "admins/sid@example.org"), { role: "super-admin", status: "suspended" });
+    await setDoc(rawDoc(db, "admins/mo@example.org"), { role: "moderator", active: true });
+  });
+  await setDoc(doc(stranger(), "comments/awbi-ka004-1993_eve"), comment());
+  const mod = (uid, mail) => updateDoc(doc(as(uid, mail), "comments/awbi-ka004-1993_eve"), { status: "rejected", modBy: uid, modAt: serverTimestamp(), modNote: "" });
+  await assertFails(mod("sid", "sid@example.org"));
+  await assertFails(mod("mo", "mo@example.org"));
+  await assertSucceeds(mod("sam", "sam@example.org"));
 });

@@ -27,6 +27,9 @@
   <symbol id="i-paw" viewBox="0 0 24 24"><ellipse cx="12" cy="16" rx="4.5" ry="3.8"/><circle cx="6" cy="10.5" r="1.9"/><circle cx="9.6" cy="6.6" r="1.9"/><circle cx="14.4" cy="6.6" r="1.9"/><circle cx="18" cy="10.5" r="1.9"/></symbol>
   <symbol id="i-leaf" viewBox="0 0 24 24"><path d="M5 19c0-8 5-14 15-14 0 10-6 15-14 15"/><path d="M5 19 13 11"/></symbol>
   <symbol id="i-cow" viewBox="0 0 24 24"><path d="M6 8 3 6M18 8l3-2"/><rect x="6" y="7" width="12" height="11" rx="5"/><path d="M9.5 15h.01M14.5 15h.01"/></symbol>
+  <symbol id="i-locate" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></symbol>
+  <symbol id="i-phone" viewBox="0 0 24 24"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a1 1 0 0 1-1 1A16 16 0 0 1 4 5a1 1 0 0 1 1-1z"/></symbol>
 </defs></svg>
 
 <div class="shell">
@@ -38,6 +41,7 @@
       <button class="round" type="button" data-go="search" aria-label="Search" title="Search"><svg class="icon"><use href="#i-search"/></svg></button>
       <button class="round" type="button" data-go="needs" id="needsBtn" aria-label="Needs" title="Needs: what groups need now" hidden><svg class="icon"><use href="#i-heart"/></svg></button>
       <button class="round" type="button" data-go="filters" aria-label="Filters" title="Filters"><svg class="icon"><use href="#i-filter"/></svg></button>
+      <button class="round mobile-only" type="button" data-go="csv" aria-label="Download CSV" title="Download CSV"><svg class="icon"><use href="#i-download"/></svg></button>
       <button class="round mobile-only" type="button" data-go="share" aria-label="Copy link" title="Copy link"><svg class="icon"><use href="#i-link"/></svg></button>
     </nav>
     <div class="railbottom">
@@ -63,6 +67,7 @@
     <div class="tools">
       <button class="round" id="filterBtn" type="button" aria-label="Filters" aria-expanded="false" aria-controls="filters"><svg class="icon"><use href="#i-filter"/></svg><span class="dot" id="filterDot"></span></button>
       <button class="pill blue" id="share" type="button"><svg class="icon"><use href="#i-link"/></svg>Copy link</button>
+      <button class="pill" id="csv" type="button"><svg class="icon"><use href="#i-download"/></svg>Download CSV</button>
     </div>
   </section>
 
