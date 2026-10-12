@@ -565,3 +565,7 @@
 .ngo-rr .comments .none{font-size:16px}
 @media (max-width:650px){.ngo-rr .tools{flex-wrap:wrap;gap:8px}
 .ngo-rr .tools .round,.ngo-rr .tools .pill,.ngo-rr .tools .pill.blue{flex:1 1 auto;min-width:0}}
+.ngo-rr .kd{--red:#C2410C;--red2:#9A3412;--wash:#FFF1E8}
+.ngo-rr .kdlogo{display:inline-flex;align-items:center;margin-right:auto;padding:8px 0}
+.ngo-rr .kdlogo img{height:32px;width:auto;display:block}
+.ngo-rr .kd .eyebar{gap:8px 24px}

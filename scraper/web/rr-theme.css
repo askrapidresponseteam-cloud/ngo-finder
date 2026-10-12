@@ -341,3 +341,9 @@ dl{font-size:16px}
   .tools{flex-wrap:wrap;gap:8px}
   .tools .round,.tools .pill,.tools .pill.blue{flex:1 1 auto;min-width:0}
 }
+
+/* Kindaura's own pages (www.kindaura.in/admin and /join): its logo and orange */
+.kd{--red:#C2410C;--red2:#9A3412;--wash:#FFF1E8}
+.kdlogo{display:inline-flex;align-items:center;margin-right:auto;padding:8px 0}
+.kdlogo img{height:32px;width:auto;display:block}
+.kd .eyebar{gap:8px 24px}

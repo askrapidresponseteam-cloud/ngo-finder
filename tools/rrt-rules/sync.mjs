@@ -19,7 +19,7 @@ import { join } from "node:path";
 import { merge } from "../../tests/rules/merge.mjs";
 
 const PROJECT = "rrt-new-backend";
-const DOMAINS = ["rapid-response.in", "www.rapid-response.in", "ngo-finder-omega.vercel.app"];
+const DOMAINS = ["rapid-response.in", "www.rapid-response.in", "kindaura.in", "www.kindaura.in", "ngo-finder-omega.vercel.app"];
 const RULES = "https://firebaserules.googleapis.com/v1";
 const IDT = "https://identitytoolkit.googleapis.com/admin/v2/projects/" + PROJECT;
 const OUT = join(homedir(), "Desktop", "rrt-ngo-ship");

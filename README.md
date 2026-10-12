@@ -99,7 +99,7 @@ On every group, under its contacts:
   email; never SMS) so every answer is one real person; their email is never
   shown.
 
-**Admin page** (rapid-response.in/ngos-admin, or admin.html): sign in with
+**Admin page** (www.kindaura.in/admin, or rapid-response.in/ngos-admin): sign in with
 Google or an emailed link. The Outreach tab is the daily tool: type an NGO's
 name or town, tap it, then answer one question at a time (contact person,
 how you contacted them, date, whether they responded, their phone, email and
@@ -144,7 +144,7 @@ Or by hand in the Firebase console:
 
 1. Authentication > Sign-in method: **Google** on, and **Email/Password** with
    **Email link (passwordless sign-in)** on. Settings > Authorized domains:
-   `rapid-response.in`, `www.rapid-response.in`, `ngo-finder-omega.vercel.app`.
+   `rapid-response.in`, `www.rapid-response.in`, `kindaura.in`, `www.kindaura.in`, `ngo-finder-omega.vercel.app`.
 2. Firestore > Rules: put the block between the `NGO-DIRECTORY` markers of
    `firestore.rules` inside `match /databases/{database}/documents { ... }`
    (just before its closing brace), then Publish. Do the same in RRT's rules
