@@ -1,0 +1,272 @@
+rules_version = '2';
+
+// Animal NGOs of India: federation data.
+//
+// Trust model (enforced here, not only in the app):
+//  * A group becomes Verified only when an admin has checked its documents,
+//    someone other than the applicant has vouched for it (a district or state
+//    coordinator, or a member of an already verified group), and, if an admin
+//    asked for one, a coordinator has done a visit or video call.
+//  * No money: no text anywhere may carry payment details or fundraising
+//    asks (UPI, bank, account numbers, rupee amounts, QR codes, wallets).
+//  * Every review step leaves a permanent audit entry.
+//
+// The owner email below is the first admin. More admins are listed in the
+// document config/admins (field "emails"), which only the Firebase console
+// can change.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------------------------------------------------------- helpers
+    function signedIn() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+    function email() {
+      return request.auth.token.email.lower();
+    }
+    function isOwner() {
+      return signedIn() && email() == "narenkumar19706@gmail.com";
+    }
+    function isAdmin() {
+      return isOwner() || (signedIn()
+        && exists(/databases/$(database)/documents/config/admins)
+        && email() in get(/databases/$(database)/documents/config/admins).data.emails);
+    }
+    function coord() {
+      return get(/databases/$(database)/documents/coordinators/$(email())).data;
+    }
+    function isCoordinator() {
+      return signedIn() && exists(/databases/$(database)/documents/coordinators/$(email()));
+    }
+    // A coordinator covers a whole state ("*") or one district.
+    function coordinates(state, district) {
+      return isCoordinator() && coord().state == state && (coord().district == "*" || coord().district == district);
+    }
+    function isVerifiedMember() {
+      return signedIn() && exists(/databases/$(database)/documents/members/$(request.auth.uid));
+    }
+    function memberOf(gid) {
+      return isVerifiedMember()
+        && get(/databases/$(database)/documents/members/$(request.auth.uid)).data.gid == gid;
+    }
+    // Payment details and fundraising asks. Case-insensitive, any line.
+    function hasMoney(s) {
+      return s.matches('(?is).*(₹|\\brs\\.? ?[0-9]|\\binr\\b|rupee|\\bupi\\b|@ok(axis|hdfc|icici|sbi)|@ybl|@paytm|paytm|g ?pay|google ?pay|phone ?pe|bhim|\\bbank\\b|account ?(no|number)|\\ba/c\\b|ifsc|\\bcash\\b|money|\\bfunds?\\b|fund ?rais|crowd ?fund|qr ?code|wallet|donat(e|ion)s? (of|in) (money|cash)).*');
+    }
+    function cleanText(s, max) {
+      return s is string && s.size() <= max && !hasMoney(s);
+    }
+    function onlyChanges(keys) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys);
+    }
+    // Review steps must write their audit entry in the same batch.
+    function audited(id, action) {
+      return getAfter(/databases/$(database)/documents/audit/$(id)).data.action == action
+        && getAfter(/databases/$(database)/documents/audit/$(id)).data.by == request.auth.uid;
+    }
+
+    // ---------------------------------------------------------- config
+    match /config/{doc} {
+      allow read: if isAdmin();
+      allow write: if false;  // Firebase console only
+    }
+
+    // ---------------------------------------------------------- coordinators
+    match /coordinators/{mail} {
+      allow read: if isAdmin() || (signedIn() && email() == mail);
+      allow create, update: if isAdmin()
+        && request.resource.data.keys().hasOnly(["state", "district", "name", "by", "at"])
+        && request.resource.data.state is string && request.resource.data.district is string
+        && request.resource.data.by == request.auth.uid && request.resource.data.at == request.time;
+      allow delete: if isAdmin();
+    }
+
+    // ---------------------------------------------------------- applications
+    // A claim on a listed group, or a new group asking to be listed.
+    match /applications/{id} {
+      function app() { return resource.data; }
+      function next() { return request.resource.data; }
+
+      allow read: if isAdmin()
+        || (signedIn() && app().uid == request.auth.uid)
+        || coordinates(app().state, app().district)
+        || (signedIn() && app().voucherEmail == email());
+
+      allow create: if signedIn()
+        && next().keys().hasOnly(["uid", "email", "kind", "gid", "name", "state", "district", "town", "address",
+                                  "role", "regType", "regNumber", "awbiCode", "phone", "officialEmail", "website",
+                                  "about", "voucherEmail", "proofs", "driveLink", "declaration", "status",
+                                  "createdAt", "updatedAt"])
+        && next().uid == request.auth.uid && next().email == email()
+        && next().kind in ["claim", "new"]
+        && next().status == "submitted"
+        && next().declaration == true
+        && next().createdAt == request.time && next().updatedAt == request.time
+        && next().gid is string && next().gid.size() > 0 && next().gid.size() <= 200
+        && cleanText(next().name, 200) && next().name.size() > 2
+        && next().state is string && next().district is string
+        && cleanText(next().about, 2000) && cleanText(next().address, 500) && cleanText(next().role, 100)
+        && next().regType in ["awbi", "darpan", "trust", "society", "section8", "other"]
+        && next().regNumber is string && next().regNumber.size() >= 3 && next().regNumber.size() <= 80
+        && next().voucherEmail is string && next().voucherEmail.size() <= 200
+        && next().proofs is list && next().proofs.size() <= 6
+        && next().driveLink is string && next().driveLink.size() <= 500;
+
+      // The applicant may fix details while it waits or after "more information needed".
+      allow update: if signedIn() && app().uid == request.auth.uid
+        && app().status in ["submitted", "info_needed"]
+        && onlyChanges(["about", "address", "regNumber", "regType", "phone", "officialEmail", "website",
+                        "voucherEmail", "proofs", "driveLink", "status", "updatedAt", "town"])
+        && next().status == "submitted" && next().updatedAt == request.time
+        && cleanText(next().about, 2000) && cleanText(next().address, 500)
+        && next().proofs.size() <= 6;
+
+      // The voucher: a coordinator for that place, or a member of a verified group
+      // whose email the applicant named. Never the applicant.
+      allow update: if signedIn() && app().uid != request.auth.uid
+        && (coordinates(app().state, app().district) || (app().voucherEmail == email() && isVerifiedMember()))
+        && app().status in ["submitted", "docs_ok", "visit_required"]
+        && onlyChanges(["vouch", "updatedAt"])
+        && next().vouch.keys().hasOnly(["ok", "by", "email", "note", "at"])
+        && next().vouch.by == request.auth.uid && next().vouch.email == email()
+        && next().vouch.at == request.time && next().vouch.ok is bool
+        && cleanText(next().vouch.note, 1000)
+        && next().updatedAt == request.time
+        && audited("vouch_" + id + "_" + request.auth.uid, "vouch");
+
+      // A coordinator records a visit or video call.
+      allow update: if signedIn() && app().uid != request.auth.uid
+        && coordinates(app().state, app().district)
+        && app().status == "visit_required"
+        && onlyChanges(["visit", "updatedAt"])
+        && next().visit.keys().hasOnly(["ok", "by", "email", "note", "at", "how"])
+        && next().visit.by == request.auth.uid && next().visit.at == request.time
+        && next().visit.ok is bool && next().visit.how in ["site", "video"]
+        && cleanText(next().visit.note, 1000)
+        && next().updatedAt == request.time
+        && audited("visit_" + id + "_" + request.auth.uid, "visit");
+
+      // Admin decisions. Verified only after documents, a vouch by someone else
+      // (not the applicant, not this admin) and, if asked, a visit.
+      allow update: if isAdmin() && app().uid != request.auth.uid
+        && audited("decide_" + id + "_" + next().status + "_" + request.auth.uid, "decide")
+        && onlyChanges(["status", "docsOk", "docsNote", "needsVisit", "decision", "updatedAt", "reviewedBy"])
+        && next().status in ["submitted", "info_needed", "docs_ok", "visit_required", "verified", "rejected"]
+        && next().updatedAt == request.time && next().reviewedBy == request.auth.uid
+        // Once a visit has been asked for, it cannot be dropped.
+        && (resource.data.get("needsVisit", false) != true || next().needsVisit == true)
+        && (next().status != "verified" || (
+              next().docsOk == true
+              && app().vouch.ok == true && app().vouch.by != app().uid && app().vouch.by != request.auth.uid
+              && (next().needsVisit != true || app().visit.ok == true)))
+        && (next().status != "visit_required" || next().needsVisit == true)
+        && (next().status != "docs_ok" || next().docsOk == true);
+
+      allow delete: if false;
+    }
+
+    // ---------------------------------------------------------- proof documents
+    // Small compressed images or PDFs stored as data URLs (free plan has no file storage).
+    match /proofs/{id} {
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(["uid", "name", "type", "data", "state", "district", "createdAt"])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.data is string && request.resource.data.data.size() < 950000
+        && request.resource.data.data.matches('data:(image/(jpeg|png|webp)|application/pdf);base64,.*')
+        && request.resource.data.createdAt == request.time;
+      allow read: if isAdmin() || (signedIn() && resource.data.uid == request.auth.uid)
+        || coordinates(resource.data.state, resource.data.district);
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+
+    // ---------------------------------------------------------- members
+    // Written by an admin when an application is verified.
+    match /members/{uid} {
+      allow read: if isAdmin() || (signedIn() && request.auth.uid == uid);
+      allow create: if isAdmin()
+        && request.resource.data.keys().hasOnly(["gid", "email", "appId", "at"])
+        && getAfter(/databases/$(database)/documents/applications/$(request.resource.data.appId)).data.status == "verified"
+        && getAfter(/databases/$(database)/documents/applications/$(request.resource.data.appId)).data.uid == uid;
+      allow update: if false;
+      allow delete: if isAdmin();
+    }
+
+    // ---------------------------------------------------------- verified profiles (public)
+    match /profiles/{gid} {
+      allow read: if true;
+      allow create: if isAdmin()
+        && getAfter(/databases/$(database)/documents/applications/$(request.resource.data.appId)).data.status == "verified"
+        && getAfter(/databases/$(database)/documents/applications/$(request.resource.data.appId)).data.gid == gid;
+      // Members keep their own profile current; no money text.
+      allow update: if (memberOf(gid)
+          && onlyChanges(["about", "phones", "emails", "website", "hours", "services", "species", "capacity", "updatedAt"])
+          && cleanText(request.resource.data.about, 2000)
+          && cleanText(request.resource.data.hours, 300)
+          && request.resource.data.updatedAt == request.time
+          && (!("capacity" in request.resource.data) || (
+                request.resource.data.capacity.intake in ["open", "limited", "full"]
+                && cleanText(request.resource.data.capacity.note, 300))))
+        || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // Verified groups at a glance, for the public directory (one read per visit).
+    match /public/{doc} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // ---------------------------------------------------------- needs (public, in-kind only)
+    match /needs/{id} {
+      function prof() { return get(/databases/$(database)/documents/profiles/$(request.resource.data.gid)).data; }
+      allow read: if true;
+      allow create: if memberOf(request.resource.data.gid)
+        && request.resource.data.keys().hasOnly(["gid", "name", "state", "district", "kind", "text", "urgent",
+                                                 "status", "by", "createdAt", "expiresAt"])
+        && request.resource.data.name == prof().name
+        && request.resource.data.state == prof().state && request.resource.data.district == prof().district
+        && request.resource.data.kind in ["food", "medicine", "supplies", "volunteers", "transport", "foster",
+                                          "adoption", "vet", "other"]
+        && cleanText(request.resource.data.text, 600) && request.resource.data.text.size() >= 5
+        && request.resource.data.urgent is bool
+        && request.resource.data.status == "open" && request.resource.data.by == request.auth.uid
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.expiresAt > request.time
+        && request.resource.data.expiresAt <= request.time + duration.value(31, "d");
+      allow update: if (memberOf(resource.data.gid)
+          && onlyChanges(["status", "text", "urgent", "expiresAt"])
+          && request.resource.data.status in ["open", "met", "closed"]
+          && cleanText(request.resource.data.text, 600)
+          && request.resource.data.expiresAt <= request.time + duration.value(31, "d"))
+        || (isAdmin() && onlyChanges(["status"]) && request.resource.data.status == "removed");
+      allow delete: if isAdmin();
+    }
+
+    // ---------------------------------------------------------- reports from the public
+    match /reports/{id} {
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(["target", "targetName", "reason", "text", "uid", "email", "status", "createdAt"])
+        && request.resource.data.uid == request.auth.uid && request.resource.data.email == email()
+        && request.resource.data.reason in ["fake", "money", "wrong", "cruelty", "closed", "other"]
+        && request.resource.data.text is string && request.resource.data.text.size() <= 2000
+        && request.resource.data.status == "open" && request.resource.data.createdAt == request.time;
+      allow read: if isAdmin();
+      allow update: if isAdmin() && onlyChanges(["status", "resolution", "resolvedBy", "resolvedAt"]);
+      allow delete: if false;
+    }
+
+    // ---------------------------------------------------------- audit log (append only)
+    match /audit/{id} {
+      allow read: if isAdmin();
+      allow create: if (isAdmin() || isCoordinator() || isVerifiedMember())
+        && request.resource.data.keys().hasOnly(["by", "email", "action", "target", "note", "at"])
+        && request.resource.data.by == request.auth.uid && request.resource.data.email == email()
+        && request.resource.data.at == request.time
+        && request.resource.data.action is string && request.resource.data.note is string
+        && request.resource.data.note.size() <= 2000;
+      allow update, delete: if false;
+    }
+  }
+}

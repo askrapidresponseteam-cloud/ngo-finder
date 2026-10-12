@@ -24,3 +24,23 @@ jobs:
         run: python -m unittest discover -s tests
       - name: Website data check
         run: python check_site.py
+
+  rules:
+    name: Security rules (Firestore emulator)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Install test tools
+        working-directory: tests/rules
+        run: npm install --no-audit --no-fund
+      - name: Rules tests
+        working-directory: tests/rules
+        run: npx firebase --config ../../firebase.json emulators:exec --only firestore --project demo-ngo "node --test --test-reporter=./annotate.mjs --test-reporter-destination=stdout"
+
