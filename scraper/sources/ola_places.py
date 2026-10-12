@@ -338,7 +338,10 @@ def _search(http, key, term, usage, location="", radius=CENTRE_RADIUS):
     return parse_items(_get(http, "/autocomplete", params, key))
 
 
-DETAIL_PATHS = ("/details", "/details/advanced")
+# Checked 12 Oct 2026 (Ola Maps check workflow): both /details and /details/advanced
+# return phone and website as "NA" or empty for animal groups, so only the basic call
+# is made. Add "/details/advanced" back here if Ola starts filling contact fields.
+DETAIL_PATHS = ("/details",)
 
 
 def details(http, key, place_id, usage, stats=None):

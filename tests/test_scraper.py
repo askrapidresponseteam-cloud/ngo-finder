@@ -520,12 +520,15 @@ class TestOla(unittest.TestCase):
         self.assertEqual(org.website, "")
         self.assertEqual(org.social, ["https://www.facebook.com/asareanimaltrust"])
 
-    def test_details_fall_back_to_advanced_for_phone(self):
+    def test_details_can_fall_back_to_advanced_for_phone(self):
         basic = '{"status":"ok","result":{"name":"Asare Animal Trust","formatted_address":"Surathkal"}}'
         advanced = ('{"status":"ok","result":{"name":"Asare Animal Trust",'
                     '"contact":{"phone_numbers":{"primary_phone":"079751 24932"}},"website":"asare.org"}}')
         http = FakeHttp({"/details/advanced": FakeResponse(advanced), "/details": FakeResponse(basic)})
         stats = {}
+        orig = self.ola.DETAIL_PATHS
+        self.ola.DETAIL_PATHS = ("/details", "/details/advanced")
+        self.addCleanup(setattr, self.ola, "DETAIL_PATHS", orig)
         usage = self.ola.Usage(100, path=self.ola.USAGE_FILE)
         d = self.ola.details(http, "KEY", "p1", usage, stats)
         self.assertEqual(d["phones"], ["+91 79751 24932"])
