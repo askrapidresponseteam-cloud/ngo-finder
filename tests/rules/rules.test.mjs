@@ -546,7 +546,10 @@ test("an edit bumps the revision and keeps who created it; a delete is audited t
   await logBatch(admin2(), "o1", outreach(), 0, "admin2", "admin2@example.org", "outreach");
   await assertFails(logBatch(owner(), "o1", outreach({ rev: 1, createdBy: "owner", updatedBy: "owner" }), 1, "owner", OWNER, "outreach edited"));
   await assertFails(logBatch(owner(), "o1", outreach({ rev: 3, updatedBy: "owner" }), 3, "owner", OWNER, "outreach edited"));
-  await assertSucceeds(logBatch(owner(), "o1", outreach({ rev: 1, response: "no", updatedBy: "owner" }), 1, "owner", OWNER, "outreach edited"));
+  let createdAt;
+  await env.withSecurityRulesDisabled(async (ctx) => { createdAt = (await getDoc(doc(ctx.firestore(), "outreach/o1"))).data().createdAt; });
+  await assertFails(logBatch(owner(), "o1", outreach({ rev: 1, response: "no", updatedBy: "owner" }), 1, "owner", OWNER, "outreach edited"));  // createdAt changed
+  await assertSucceeds(logBatch(owner(), "o1", outreach({ rev: 1, response: "no", updatedBy: "owner", createdAt }), 1, "owner", OWNER, "outreach edited"));
   await assertFails(deleteDoc(doc(owner(), "outreach/o1")));
   await assertSucceeds(logBatch(owner(), "o1", null, 2, "owner", OWNER, "outreach deleted", true));
 });
