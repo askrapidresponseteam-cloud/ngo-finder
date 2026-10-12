@@ -33,7 +33,7 @@
       '<button type="button" data-go="home">Overview</button>' +
       '<button type="button" data-go="states">All states</button>' +
       '<button type="button" data-go="needs" id="needsBtn" hidden>Needs</button>' +
-      '<button type="button" data-go="about">About the data</button></nav></div>' +
+      '</nav></div>' +
       '<section class="intro"><div class="intro-text"><div class="crumbs" id="crumbs"></div>' +
       '<h1 id="title">Animal NGOs of India</h1><div class="muted" id="sub">Loading the directory...</div></div></section>' +
       '<header class="top"><div class="finderslot" id="finderSlot"></div>' +
@@ -52,7 +52,7 @@
       '<label><input type="checkbox" id="fVerified"> Hide unverified web finds</label>' +
       '<label hidden><input type="checkbox" id="fFed"> Only groups verified by the federation</label></div>' +
       '<main id="view" aria-live="polite"><div class="loading"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div></main>' +
-      '<footer class="foot" id="foot" hidden></footer></div>' +
+      '</div>' +
       '<div class="toast" id="toast" role="status"></div>';
   }
   function scope() { return ROOT || document; }
@@ -984,6 +984,7 @@
     if (o.u) line("Check", "Found only by web search. Confirm it is an active NGO before relying on it.");
     if (o.nt.length) line("Notes", o.nt.join(". "));
     line("Sources", linkList(o.sr, function (x) { return x; }, host));
+    if (o.src.indexOf("Ola Maps") >= 0) line("Listing", "Ola Maps (Open Database License)");
     more.appendChild(dl);
     on(tog, function () {
       var open = !more.classList.contains("open");
@@ -1028,22 +1029,6 @@
       .catch(function () { /* directory works without it */ });
   }
 
-  // Licence credits the data sources require, folded away until someone asks.
-  function credits() {
-    var lines = [];
-    if (META.ola) lines.push("Map listings from Ola Maps. That data is available under the Open Database License.");
-    if (META.map_credit) lines.push(META.map_credit + ". District locations from India Post PIN codes.");
-    if (!lines.length) return null;
-    var body = el("div", { cls: "more" }, lines.map(function (t) { return el("p", { text: t }); }));
-    var t = el("button", { cls: "more-toggle", type: "button", "aria-expanded": "false" },
-      [el("span", { cls: "plusdot" }, [plusIcon()]), el("span", { text: "Data credits" })]);
-    on(t, function () {
-      var open = !body.classList.contains("open");
-      body.classList.toggle("open", open); t.setAttribute("aria-expanded", String(open));
-    });
-    return el("div", null, [t, body]);
-  }
-
   function uniqPhones(list) {
     var seen = {};
     return list.filter(function (p) {
@@ -1064,15 +1049,6 @@
       o._id = gidOf(o);
     });
 
-    var foot = $("foot");
-    foot.hidden = false;
-    add(foot, [
-      el("p", { text: "Sources: the Animal Welfare Board of India list of recognised organisations" +
-        (META.awbi_date ? " (as on " + META.awbi_date + ")" : "") +
-        ", the groups' own websites and pages, news reports and NGO directories. Every entry links to where its details come from." }),
-      el("p", { text: "Names under \"Who runs it\" are as published by each source; confirm when you get in touch. District locations on the map are approximate." }),
-      credits()
-    ]);
 
     types = $("types");
     TYPES.forEach(function (t) {
@@ -1097,7 +1073,6 @@
         else if (g === "filters") toggleFilters();
         else if (g === "share") copyLink();
         else if (g === "csv") downloadCsv();
-        else if (g === "about") foot.scrollIntoView({ behavior: "smooth" });
       });
     });
     var logo = document.querySelector(".shell .logo");

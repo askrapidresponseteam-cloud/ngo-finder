@@ -949,7 +949,7 @@ class TestRapidResponseEmbed(unittest.TestCase):
         for sym in re.findall(r'<symbol id="([^"]+)"', page):
             self.assertIn('id="%s"' % sym, js, sym)
         for i in ("types", "searchbox", "q", "clear", "crumbs", "title", "sub", "filterBtn", "filterDot", "share",
-                  "filters", "fContact", "fPeople", "fAwbi", "fVerified", "fFed", "view", "foot", "toast", "needsBtn"):
+                  "filters", "fContact", "fPeople", "fAwbi", "fVerified", "fFed", "view", "toast", "needsBtn"):
             self.assertIn('id="%s"' % i, js, i)
 
 
