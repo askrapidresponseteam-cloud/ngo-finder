@@ -30,7 +30,7 @@ test("inside RRT's rules: the directory works", async () => {
 test("inside RRT's rules: RRT's own data is untouched by the block", async () => {
   const db = as("eve", "eve@example.org");
   await assertFails(setDoc(doc(db, "sos_alerts/a1"), { active: true }));
-  await assertFails(getDoc(doc(db, "subscribed_users/f1")));
+  await assertFails(getDocs(collection(db, "subscribed_users")));
   await assertFails(setDoc(doc(db, "reports/r1"), { target: "x" }));
   await assertFails(getDoc(doc(db, "admins/sam@example.org")));
   await assertFails(setDoc(doc(db, "ngo/other/checks/x_eve"), { gid: "x", uid: "eve", ok: true, why: "", at: serverTimestamp() }));
