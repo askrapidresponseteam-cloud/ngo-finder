@@ -147,6 +147,33 @@ service cloud.firestore {
         && textOk(next().role, 100) && shortOk(next().awbiCode, 40)
         && detailsOk();
 
+      // Admin decisions. (First, so an admin's batch is checked against this clause
+      // before the others use up the per-request evaluation budget.)
+      allow update: if app().uid != request.auth.uid
+        && onlyChanges(["status", "docsOk", "docsNote", "needsVisit", "decision", "updatedAt", "reviewedBy", "rev"])
+        && nextRev()
+        && isAdmin()
+        && next().status in ["submitted", "info_needed", "docs_ok", "visit_required", "verified", "rejected", "suspended"]
+        && next().updatedAt == request.time && next().reviewedBy == request.auth.uid
+        && textOk(next().get("decision", ""), 1000) && textOk(next().get("docsNote", ""), 1000)
+        // Once a visit has been asked for, it cannot be dropped.
+        && (app().get("needsVisit", false) != true || next().get("needsVisit", false) == true)
+        && (next().status != "visit_required" || next().get("needsVisit", false) == true)
+        && (next().status != "docs_ok" || next().get("docsOk", false) == true)
+        && (next().status != "suspended" || app().status == "verified")
+        && (next().status != "verified" || (
+              app().status in ["submitted", "docs_ok", "visit_required"]
+              // documents were checked in an earlier step
+              && app().get("docsOk", false) == true && next().get("docsOk", false) == true
+              // vouched for by someone other than the applicant and this admin
+              && app().vouch.ok == true && app().vouch.by != app().uid && app().vouch.by != request.auth.uid
+              // a coordinator vouched, or a coordinator visited
+              && (app().vouch.role == "coordinator" || app().get("needsVisit", false) == true)
+              && (next().get("needsVisit", false) != true || app().visit.ok == true)
+              // never take over another application's profile
+              && (!exists(docPath("profiles/" + app().gid)) || get(docPath("profiles/" + app().gid)).data.appId == id)))
+        && audited("decide", id);
+
       // The applicant may fix details while it waits or after "more information
       // needed". Any change sends the documents back for checking.
       allow update: if signedIn() && app().uid == request.auth.uid
@@ -189,32 +216,6 @@ service cloud.firestore {
         && textOk(next().visit.note, 1000)
         && next().updatedAt == request.time
         && audited("visit", id);
-
-      // Admin decisions.
-      allow update: if app().uid != request.auth.uid
-        && onlyChanges(["status", "docsOk", "docsNote", "needsVisit", "decision", "updatedAt", "reviewedBy", "rev"])
-        && nextRev()
-        && isAdmin()
-        && next().status in ["submitted", "info_needed", "docs_ok", "visit_required", "verified", "rejected", "suspended"]
-        && next().updatedAt == request.time && next().reviewedBy == request.auth.uid
-        && textOk(next().get("decision", ""), 1000) && textOk(next().get("docsNote", ""), 1000)
-        // Once a visit has been asked for, it cannot be dropped.
-        && (app().get("needsVisit", false) != true || next().get("needsVisit", false) == true)
-        && (next().status != "visit_required" || next().get("needsVisit", false) == true)
-        && (next().status != "docs_ok" || next().get("docsOk", false) == true)
-        && (next().status != "suspended" || app().status == "verified")
-        && (next().status != "verified" || (
-              app().status in ["submitted", "docs_ok", "visit_required"]
-              // documents were checked in an earlier step
-              && app().get("docsOk", false) == true && next().get("docsOk", false) == true
-              // vouched for by someone other than the applicant and this admin
-              && app().vouch.ok == true && app().vouch.by != app().uid && app().vouch.by != request.auth.uid
-              // a coordinator vouched, or a coordinator visited
-              && (app().vouch.role == "coordinator" || app().get("needsVisit", false) == true)
-              && (next().get("needsVisit", false) != true || app().visit.ok == true)
-              // never take over another application's profile
-              && (!exists(docPath("profiles/" + app().gid)) || get(docPath("profiles/" + app().gid)).data.appId == id)))
-        && audited("decide", id);
 
       allow delete: if false;
     }
