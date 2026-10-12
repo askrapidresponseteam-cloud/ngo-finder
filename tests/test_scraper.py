@@ -1096,6 +1096,13 @@ class TestDeepSweep(unittest.TestCase):
                {"n": "SSBK Datta Dhaama Goshale", "st": "Karnataka", "d": "Bengaluru Rural", "m": "https://www.google.com/maps?q=3,4"},
                {"n": "SSBK Datta Dhaama Goshale", "st": "Karnataka", "d": "Bengaluru Rural", "m": ""}]
         self.assertEqual([r["n"] for r in deep.add(have, new)], ["SSBK Datta Dhaama Goshale"])
+        have = [{"n": "Duma's Animal Welfare Trust", "st": "K", "d": "B", "m": ""},
+                {"n": "Charlies Animal Rescue Centre (CARE)", "st": "K", "d": "B", "m": ""},
+                {"n": "ISKCON Goshala", "st": "K", "d": "B", "m": ""}]
+        new = [{"n": "Dumas Animal Welfare Trust", "st": "K", "d": "B", "m": ""},
+               {"n": "Charlies Animal Rescue Centre", "st": "K", "d": "B", "m": ""},
+               {"n": "Iskon Goshala", "st": "K", "d": "B", "m": ""}]
+        self.assertEqual(deep.add(have, new), [])
 
 
 class TestFederation(unittest.TestCase):

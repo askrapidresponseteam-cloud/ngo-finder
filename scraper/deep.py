@@ -14,6 +14,7 @@ every build (animal-group names only, groups taken off stay off).
 import argparse
 import json
 import os
+import re
 import sys
 
 from . import geo, lookup_page
@@ -23,14 +24,22 @@ from .sources import ola_places
 SITE_DATA = os.path.join("site", "data", "ngos.json")
 
 
+def _name_key(n):
+    """Same group written differently: "Duma's" and "Dumas", "Organisation" and
+    "Organisations", "Iskon" and "ISKCON", a trailing "(CARE)"."""
+    n = re.sub(r"\([^)]*\)", " ", n.lower()).replace("iskon", "iskcon")
+    words = [w[:-1] if len(w) > 3 and w.endswith("s") else w for w in re.findall(r"[a-z0-9]+", n.replace("'", ""))]
+    return " ".join(words)
+
+
 def add(existing, new_records):
     """Records from new_records that are not already listed (same name and place,
     or the same map pin), in the order found."""
-    seen = {(r["n"].lower(), r["st"], r["d"]) for r in existing}
+    seen = {(_name_key(r["n"]), r["st"], r["d"]) for r in existing}
     pins = {r["m"] for r in existing if r.get("m")}
     out = []
     for r in new_records:
-        key = (r["n"].lower(), r["st"], r["d"])
+        key = (_name_key(r["n"]), r["st"], r["d"])
         if key in seen or (r.get("m") and r["m"] in pins):
             continue
         seen.add(key)
