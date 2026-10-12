@@ -33,10 +33,11 @@ curl -sS --max-time 40 "https://api.data.gov.in/lists?format=json&filters%5Btitl
 head -c 2500 dg.json; echo
 h "data.gov.in catalog: NGO"
 curl -sS --max-time 40 "https://api.data.gov.in/lists?format=json&filters%5Btitle%5D=NGO&api-key=$K&limit=100" -o dg2.json || true
-python3 - <<'P' || head -c 2000 dg2.json
+python3 - <<"P" || head -c 2000 dg2.json
 import json
 d=json.load(open("dg2.json"))
 print("total:", d.get("total"))
 for r in d.get("records", [])[:100]:
     print(r.get("index_name") or r.get("id"), "|", (r.get("title") or "")[:110])
 P
+echo; echo "probe done"; exit 0

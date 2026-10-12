@@ -486,6 +486,54 @@ service cloud.firestore {
           && request.resource.data.updatedBy == request.auth.uid && request.resource.data.updatedAt == request.time;
         allow delete: if ngoIsAdmin();
       }
+
+      // ---------------------------------------------------------- suggested groups (public form)
+      // "Know a group that's missing?": anyone signed in may suggest one. Only
+      // admins read them; nothing shows publicly until an admin checks it.
+      match /suggestions/{id} {
+        function ngoSug() { return request.resource.data; }
+        allow create: if ngoSignedIn()
+          && ngoSug().keys().hasOnly(["name", "state", "district", "town", "phone", "email", "website", "about",
+                                      "uid", "byEmail", "status", "createdAt"])
+          && ngoTextOk(ngoSug().name, 200) && ngoSug().name.size() >= 3
+          && ngoShortOk(ngoSug().state, 60) && ngoSug().state.size() > 0
+          && ngoShortOk(ngoSug().district, 60)
+          && ngoTextOk(ngoSug().town, 120)
+          && ngoShortOk(ngoSug().phone, 40) && ngoShortOk(ngoSug().email, 200) && ngoShortOk(ngoSug().website, 300)
+          && ngoTextOk(ngoSug().about, 1000)
+          && ngoSug().uid == request.auth.uid && ngoSug().byEmail == ngoEmail()
+          && ngoSug().status == "new" && ngoSug().createdAt == request.time;
+        allow read: if ngoIsAdmin() || (ngoSignedIn() && resource.data.uid == request.auth.uid);
+        allow update: if ngoIsAdmin()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["status", "resolution", "resolvedBy", "resolvedAt"])
+          && request.resource.data.status in ["added", "rejected"]
+          && ngoShortOk(request.resource.data.get("resolution", ""), 500)
+          && request.resource.data.resolvedBy == request.auth.uid && request.resource.data.resolvedAt == request.time;
+        allow delete: if ngoIsAdmin();
+      }
+
+      // ---------------------------------------------------------- extra listings (public)
+      // Groups the team added by hand (usually from a suggestion), checked first.
+      // The directory merges them with the scraped data on every visit.
+      match /extras/{gid} {
+        function ngoEx() { return request.resource.data; }
+        allow read: if true;
+        allow create, update: if ngoIsAdmin() && gid.matches("[a-z0-9-]{1,200}")
+          && ngoEx().keys().hasOnly(["n", "k", "c", "st", "d", "a", "ad", "p", "e", "w", "s", "nt", "sr",
+                                     "addedBy", "addedAt"])
+          && ngoTextOk(ngoEx().n, 200) && ngoEx().n.size() >= 3
+          && ngoEx().k is list && ngoEx().k.size() <= 3
+          && ngoEx().c is list && ngoEx().c.size() <= 3
+          && ngoShortOk(ngoEx().st, 60) && ngoEx().st.size() > 0 && ngoShortOk(ngoEx().d, 60)
+          && ngoTextOk(ngoEx().a, 120) && ngoTextOk(ngoEx().ad, 500)
+          && ngoListOk(ngoEx().p, 40) && ngoListOk(ngoEx().e, 200)
+          && ngoTextOk(ngoEx().w, 300)
+          && ngoEx().s is list && ngoEx().s.size() <= 3
+          && ngoEx().nt is list && ngoEx().nt.size() <= 3
+          && ngoEx().sr is list && ngoEx().sr.size() <= 3
+          && ngoEx().addedBy == request.auth.uid && ngoEx().addedAt == request.time;
+        allow delete: if ngoIsAdmin();
+      }
     }
     // ===== NGO-DIRECTORY END =====
   }

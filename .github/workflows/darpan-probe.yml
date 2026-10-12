@@ -1,10 +1,22 @@
 name: Darpan probe
 on:
   workflow_dispatch:
+permissions:
+  contents: write
 jobs:
   probe:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - run: bash tools/darpan_probe.sh
+      - name: Probe and publish findings to the darpan-probe branch
+        run: |
+          set +e
+          bash tools/darpan_probe.sh > probe.txt 2>&1
+          tail -5 probe.txt
+          git config user.name "ngo-finder-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git checkout -B darpan-probe
+          git add -f probe.txt
+          git commit -m "Darpan probe results"
+          git push -f origin darpan-probe
