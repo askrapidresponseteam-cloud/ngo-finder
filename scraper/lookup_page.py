@@ -23,7 +23,8 @@ from .export import sort_key
 from .sources import ola_places
 
 WEB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
-STATIC = ["index.html", "styles.css", "app.js", "favicon.svg", "vercel.json", "robots.txt", "join.html", "admin.html"]
+STATIC = ["index.html", "styles.css", "app.js", "favicon.svg", "favicon.png", "apple-touch-icon.png", "og-image.png",
+          "vercel.json", "robots.txt", "join.html", "admin.html"]
 STATIC_DIRS = ["fed", "vendor"]  # federation pages and the self-hosted Firebase SDK
 
 
@@ -171,6 +172,8 @@ def build(orgs, generated=None):
     html = _between(html, "DATA", '<script id="data" type="application/json">' + blob + "</script>")
     html = _between(html, "SCRIPT", "<script>\n" + _read("app.js").replace("</", "<\\/") + "</script>")
     html = html.replace('<link rel="icon" href="favicon.svg" type="image/svg+xml">', "")
+    html = html.replace('<link rel="icon" href="favicon.png" type="image/png" sizes="64x64">', "")
+    html = html.replace('<link rel="apple-touch-icon" href="apple-touch-icon.png">', "")
     return html
 
 

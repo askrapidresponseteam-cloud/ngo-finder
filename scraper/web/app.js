@@ -19,12 +19,13 @@
     var s = document.currentScript;
     try { return s && s.src ? new URL(".", s.src).href : ""; } catch (e) { return ""; }
   })();
-  var ROOT = null, SITE = "Animal NGOs of India", SUFFIX = "";
+  var ROOT = null, SITE = "Kindaura", SUFFIX = "";
   var SPRITE = '<svg class="sprite" aria-hidden="true"><defs><symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></symbol><symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></symbol><symbol id="i-search" viewBox="0 0 24 24"><circle cx="10" cy="10" r="7"/><path d="m15 15 6 6"/></symbol><symbol id="i-filter" viewBox="0 0 24 24"><path d="M3 7h18M3 17h18"/><circle cx="9" cy="7" r="3" class="hole"/><circle cx="15" cy="17" r="3" class="hole"/></symbol><symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></symbol><symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></symbol><symbol id="i-arrow" viewBox="0 0 24 24"><path d="M7 17 17 7M7 7h10v10"/></symbol><symbol id="i-back" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></symbol><symbol id="i-heart" viewBox="0 0 24 24"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></symbol><symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol><symbol id="i-paw" viewBox="0 0 24 24"><ellipse cx="12" cy="16" rx="4.5" ry="3.8"/><circle cx="6" cy="10.5" r="1.9"/><circle cx="9.6" cy="6.6" r="1.9"/><circle cx="14.4" cy="6.6" r="1.9"/><circle cx="18" cy="10.5" r="1.9"/></symbol><symbol id="i-leaf" viewBox="0 0 24 24"><path d="M5 19c0-8 5-14 15-14 0 10-6 15-14 15"/><path d="M5 19 13 11"/></symbol><symbol id="i-cow" viewBox="0 0 24 24"><path d="M6 8 3 6M18 8l3-2"/><rect x="6" y="7" width="12" height="11" rx="5"/><path d="M9.5 15h.01M14.5 15h.01"/></symbol><symbol id="i-locate" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></symbol><symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></symbol><symbol id="i-phone" viewBox="0 0 24 24"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a1 1 0 0 1-1 1A16 16 0 0 1 4 5a1 1 0 0 1 1-1z"/></symbol></defs></svg>';
   function mount() {
     var host = document.getElementById("ngo-app");
     if (!host || document.getElementById("view")) return;
     ROOT = host;
+    SITE = "Animal NGOs of India";  // inside another site, its own name stays in the tab
     SUFFIX = host.getAttribute("data-title-suffix") || "";
     host.innerHTML = SPRITE +
       '<div class="shell embed">' +
@@ -1075,8 +1076,9 @@
         else if (g === "csv") downloadCsv();
       });
     });
-    var logo = document.querySelector(".shell .logo");
-    if (logo) on(logo, function (e) { e.preventDefault(); go({}); });
+    Array.prototype.forEach.call(document.querySelectorAll(".shell .logo, .shell .brand"), function (logo) {
+      on(logo, function (e) { e.preventDefault(); go({}); });
+    });
 
     q = $("q"); box = $("searchbox");
     var timer, typing = false;

@@ -20,8 +20,10 @@ svg.icon .hole{fill:var(--white)}
 /* frame */
 .shell{max-width:1400px;margin:auto;min-height:100vh;padding:36px 36px 28px 104px;position:relative}
 .rail{position:absolute;left:28px;top:36px;bottom:36px;width:48px;display:flex;align-items:center;flex-direction:column}
-.logo{width:35px;height:35px;display:grid;grid-template-columns:1fr 1fr;gap:2px;transform:rotate(-8deg);margin:4px 0 96px}
-.logo i{background:var(--ink);border-radius:60% 60% 30% 60%}
+.logo{width:40px;height:40px;display:block;margin:4px 0 96px}
+.logo img{width:40px;height:40px;display:block}
+.brand{display:none}
+.brand img{height:32px;width:auto;display:block}
 .railnav{display:grid;gap:12px;position:sticky;top:36px}
 .railbottom{margin-top:auto;display:grid;gap:12px}
 .round{height:48px;width:48px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;position:relative;background:var(--white)}
@@ -180,6 +182,7 @@ dd{margin:0;overflow-wrap:anywhere}
   .shell{padding:18px 16px 90px}
   .rail{position:fixed;top:auto;bottom:0;left:0;width:100%;height:68px;background:var(--white);z-index:3;flex-direction:row;justify-content:center;box-shadow:0 -1px 0 #e6e6e6}
   .logo,.railbottom{display:none}
+  .brand{display:block;width:100%;margin:2px 0 4px}
   .railnav{display:flex;gap:10px;position:static}
   .railnav .round{background:var(--bg)}
   .railnav .round.on{background:var(--ink)}
