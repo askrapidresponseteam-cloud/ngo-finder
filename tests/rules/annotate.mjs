@@ -11,5 +11,5 @@ export default async function* annotate(source) {
       yield "::error title=Rules test failed::" + ev.data.name + ": " + msg + "\n";
     }
   }
-  yield "Rules tests: " + pass + " passed, " + fail + " failed\n";
+  yield "::notice title=Rules tests::" + pass + " passed, " + fail + " failed\n";
 }

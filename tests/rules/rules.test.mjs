@@ -309,6 +309,7 @@ test("the audit log can only grow", async () => {
   await assertFails(deleteDoc(doc(owner(), "audit/x1")));
   await assertFails(setDoc(doc(stranger(), "audit/x2"), { by: "eve", email: "eve@example.org", action: "note", target: "t", note: "n", at: serverTimestamp() }));
   await assertFails(getDoc(doc(coordUdupi(), "audit/x1")));
+  await assertSucceeds(getDoc(doc(coordUdupi(), "audit/not-there")));
 });
 
 test("admin lists and coordinator lists are not public", async () => {

@@ -125,9 +125,9 @@ service cloud.firestore {
       // The voucher: a coordinator for that place, or a member of a verified group
       // whose email the applicant named. Never the applicant.
       allow update: if signedIn() && app().uid != request.auth.uid
-        && (coordinates(app().state, app().district) || (app().voucherEmail == email() && isVerifiedMember()))
-        && app().status in ["submitted", "docs_ok", "visit_required"]
         && onlyChanges(["vouch", "updatedAt"])
+        && app().status in ["submitted", "docs_ok", "visit_required"]
+        && (coordinates(app().state, app().district) || (app().voucherEmail == email() && isVerifiedMember()))
         && next().vouch.keys().hasOnly(["ok", "by", "email", "note", "at"])
         && next().vouch.by == request.auth.uid && next().vouch.email == email()
         && next().vouch.at == request.time && next().vouch.ok is bool
@@ -137,9 +137,9 @@ service cloud.firestore {
 
       // A coordinator records a visit or video call.
       allow update: if signedIn() && app().uid != request.auth.uid
-        && coordinates(app().state, app().district)
-        && app().status == "visit_required"
         && onlyChanges(["visit", "updatedAt"])
+        && app().status == "visit_required"
+        && coordinates(app().state, app().district)
         && next().visit.keys().hasOnly(["ok", "by", "email", "note", "at", "how"])
         && next().visit.by == request.auth.uid && next().visit.at == request.time
         && next().visit.ok is bool && next().visit.how in ["site", "video"]
@@ -149,19 +149,21 @@ service cloud.firestore {
 
       // Admin decisions. Verified only after documents, a vouch by someone else
       // (not the applicant, not this admin) and, if asked, a visit.
-      allow update: if isAdmin() && app().uid != request.auth.uid
+      allow update: if app().uid != request.auth.uid
+        && onlyChanges(["status", "docsOk", "docsNote", "needsVisit", "decision", "updatedAt", "reviewedBy"])
+        && isAdmin()
         && audited("decide_" + id + "_" + next().status + "_" + request.auth.uid, "decide")
         && onlyChanges(["status", "docsOk", "docsNote", "needsVisit", "decision", "updatedAt", "reviewedBy"])
         && next().status in ["submitted", "info_needed", "docs_ok", "visit_required", "verified", "rejected"]
         && next().updatedAt == request.time && next().reviewedBy == request.auth.uid
         // Once a visit has been asked for, it cannot be dropped.
-        && (resource.data.get("needsVisit", false) != true || next().needsVisit == true)
+        && (app().get("needsVisit", false) != true || next().get("needsVisit", false) == true)
         && (next().status != "verified" || (
-              next().docsOk == true
+              next().get("docsOk", false) == true
               && app().vouch.ok == true && app().vouch.by != app().uid && app().vouch.by != request.auth.uid
-              && (next().needsVisit != true || app().visit.ok == true)))
-        && (next().status != "visit_required" || next().needsVisit == true)
-        && (next().status != "docs_ok" || next().docsOk == true);
+              && (next().get("needsVisit", false) != true || app().visit.ok == true)))
+        && (next().status != "visit_required" || next().get("needsVisit", false) == true)
+        && (next().status != "docs_ok" || next().get("docsOk", false) == true);
 
       allow delete: if false;
     }
@@ -259,7 +261,8 @@ service cloud.firestore {
 
     // ---------------------------------------------------------- audit log (append only)
     match /audit/{id} {
-      allow read: if isAdmin();
+      // Admins read everything; others may check their own entries (to avoid writing one twice).
+      allow read: if isAdmin() || (signedIn() && (resource == null || resource.data.by == request.auth.uid));
       allow create: if (isAdmin() || isCoordinator() || isVerifiedMember())
         && request.resource.data.keys().hasOnly(["by", "email", "action", "target", "note", "at"])
         && request.resource.data.by == request.auth.uid && request.resource.data.email == email()
