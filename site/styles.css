@@ -267,3 +267,5 @@ input[readonly]{background:var(--bg)}
 .item.open .pill[aria-pressed="true"],.card .pill[aria-pressed="true"]{background:var(--ink);color:var(--white)}
 input:not([type=checkbox]):not([type=radio]):not([type=file]),select{height:46px}
 input[type=file]{padding:9px 12px}
+/* The header search box keeps its own pill look (form field styles above are for the portal). */
+.searchbox input:not([type=checkbox]):not([type=radio]):not([type=file]){border:0;border-radius:0;background:none;height:auto;padding:11px 4px;box-shadow:none}
