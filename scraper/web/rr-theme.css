@@ -347,3 +347,17 @@ dl{font-size:16px}
 .kdlogo{display:inline-flex;align-items:center;margin-right:auto;padding:8px 0}
 .kdlogo img{height:32px;width:auto;display:block}
 .kd .eyebar{gap:8px 24px}
+
+/* add a missing group */
+.suggestbox{margin:24px 0 0;display:grid;gap:12px;max-width:620px}
+.suggestlink{font:700 16px/1.3 var(--sans);color:var(--link);text-decoration:underline;min-height:48px;text-align:left}
+.stitle{font:800 22px/1.2 var(--disp);margin:0}
+.sfield{display:grid;gap:7px}
+.sfield .olabel{font:700 16px/1.3 var(--sans)}
+.suggestbox input,.suggestbox select,.suggestbox textarea{font:500 17px/1.4 var(--sans);min-height:52px;border:1.5px solid var(--line2);border-radius:0;padding:10px 14px;background:var(--white);width:100%}
+.suggestbox input:focus,.suggestbox select:focus,.suggestbox textarea:focus{outline:none;border-color:var(--ink);box-shadow:0 0 0 2px var(--ink)}
+.sduplist{margin:2px 0 0;padding-left:20px;font-size:15px;color:var(--graphite)}
+.osugs li{display:block}
+.sgbody{display:grid;gap:8px;width:100%}
+.sgbody .row-actions select{min-height:48px;border:1.5px solid var(--line2);border-radius:0;font:600 15px/1 var(--sans);padding:0 10px;background:var(--white)}
+.sgbody .row-actions input{flex:1;min-width:200px;min-height:48px;border:1.5px solid var(--line2);border-radius:0;font:500 16px/1 var(--sans);padding:0 12px}

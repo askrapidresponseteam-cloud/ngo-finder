@@ -56,6 +56,10 @@ const store = {
       comments: "Sent the claim invite, no reply yet.", rev: 0, createdBy: "owner", createdByEmail: "owner@example.org", createdAt: T(Date.now() - 864e5), updatedAt: T(Date.now() - 864e5) }
   },
   contacts: {},
+  suggestions: { s1: { name: "Almighty Animal Sanctuary Trust", state: "Tamil Nadu", district: "Thiruvallur", town: "Sendrayanapalayam",
+    phone: "+91 89393 20846", email: "", website: "https://www.almightyanimalsanctuary.org/", about: "500+ rescued animals",
+    uid: "zed", byEmail: "zed@example.org", status: "new", createdAt: T(Date.now() - 36e5) } },
+  extras: {},
   admins: ["admin2@example.org"],
   audit: [],
   public: { verified: { "awbi-ka004-1993": { n: "Compassion Unlimited Plus Action" } } }
@@ -134,5 +138,11 @@ export const mock = {
   async adminList() { return store.admins.slice(); },
   async setAdminList(emails) { store.admins = emails.slice(); },
   isOwner() { return who === "admin"; },
+  async suggest(rec) { store.suggestions["s" + Date.now()] = Object.assign({}, rec, { uid: user.uid, byEmail: user.email, status: "new", createdAt: now() }); },
+  async suggestions() { return list(store.suggestions).filter((s) => s.status === "new"); },
+  async resolveSuggestion(id, status, resolution) { Object.assign(store.suggestions[id], { status, resolution }); log("suggestion " + status, id, resolution); },
+  async publishExtra(gid, rec) { store.extras[gid] = Object.assign({}, rec, { addedAt: now() }); log("extra added", gid, rec.n); },
+  async removeExtra(gid) { delete store.extras[gid]; },
+  async extras() { return list(store.extras); },
   async auditLog() { return store.audit; }
 };

@@ -54,8 +54,70 @@ export async function attach() {
     ]);
   }
 
+  // "Know a group that's missing?": a short form; an admin checks it before anything shows.
+  function suggestForm(box, ctx) {
+    clear(box);
+    const f = (label, input, hint) => el("div", { cls: "sfield" }, [el("label", { cls: "olabel", text: label }), input, hint ? el("div", { cls: "fbq", text: hint }) : null]);
+    const name = el("input", { maxlength: "200", autocomplete: "off" });
+    const stSel = el("select", null, [el("option", { value: "", text: "Choose a state" })].concat((ctx.states || []).map((x) => el("option", { value: x, text: x }))));
+    const dSel = el("select", null, [el("option", { value: "", text: "Choose a district (if you know it)" })]);
+    stSel.addEventListener("change", () => {
+      clear(dSel).appendChild(el("option", { value: "", text: "Choose a district (if you know it)" }));
+      (ctx.districtsOf(stSel.value) || []).forEach((d) => dSel.appendChild(el("option", { value: d, text: d })));
+    });
+    const town = el("input", { maxlength: "120", autocomplete: "off" });
+    const phone = el("input", { type: "tel", maxlength: "40", autocomplete: "off" });
+    const web = el("input", { maxlength: "300", autocomplete: "off", placeholder: "Website, email, or an Instagram or Facebook page" });
+    const about = el("textarea", { rows: "3", maxlength: "1000" });
+    const dup = el("div", { cls: "sdup" });
+    name.addEventListener("input", () => {
+      clear(dup);
+      const hits = ctx.findGroups ? ctx.findGroups(name.value, 3) : [];
+      if (hits.length) dup.append(el("div", { cls: "fbq", text: "Already listed? Check these first:" }),
+        el("ul", { cls: "sduplist" }, hits.map((o) => el("li", { text: o.n + " (" + [o.d, o.st].filter((x) => x && x !== "Unknown").join(", ") + ")" }))));
+    });
+    const send = el("button", { cls: "pill dark", type: "button", text: "Send to the team" });
+    const note = el("p", { cls: "fbq", text: "The Rapid Response team checks every suggestion before it appears. Nothing here ever asks for money." });
+    send.addEventListener("click", async () => {
+      const n = name.value.trim();
+      if (n.length < 3) { toast("Write the group's name."); name.focus(); return; }
+      if (!stSel.value) { toast("Choose the state."); return; }
+      const m = moneyIn(n, about.value, web.value);
+      if (m) { toast(NO_MONEY.replace("%s", m)); return; }
+      const rec = { name: n, state: stSel.value, district: dSel.value || "", town: town.value.trim(),
+        phone: phone.value.trim(), email: "", website: web.value.trim(), about: about.value.trim() };
+      send.disabled = true;
+      try {
+        await B.suggest(rec);
+        clear(box).appendChild(el("p", { cls: "obigtext", text: "Thank you. The team will check " + n + " and add it to the directory." }));
+      } catch (e) { toast(errText(e)); send.disabled = false; }
+    });
+    box.append(
+      el("h3", { cls: "stitle", text: "Add a group that is missing" }),
+      f("Name of the group", name), dup,
+      f("State", stSel), f("District", dSel),
+      f("Town or village", town),
+      f("Phone (if you know it)", phone),
+      f("Website or page (if any)", web),
+      f("Anything that helps the team find them", about),
+      note, el("div", { cls: "row-actions" }, [send]));
+    name.focus();
+  }
+
   return {
     verified,
+
+    // The groups the team added by hand (from suggestions), merged into the directory.
+    async extras() {
+      try { return await B.extras(); } catch (e) { return []; }
+    },
+
+    // "Know a group that's missing?": sign in, then the short form.
+    suggest(box, ctx) {
+      const slot = el("div", { cls: "fbslot" });
+      clear(box).appendChild(slot);
+      signIn(slot, () => suggestForm(box, ctx));
+    },
 
     // Contact details the team confirmed by phone or email (admin outreach log).
     checked(box, o) {
