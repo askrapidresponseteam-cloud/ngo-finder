@@ -14,10 +14,15 @@ export function block() {
 // rrt: the text of RRT's rules file. The block goes just before the two
 // closing braces of "match /databases/{database}/documents" and "service".
 export function merge(rrt) {
-  if (rrt.includes("NGO-DIRECTORY START")) {
-    const a = rrt.indexOf("    // ===== NGO-DIRECTORY START =====");
+  // An earlier copy of the block (however it was indented) is replaced, never doubled.
+  const start = rrt.indexOf("// ===== NGO-DIRECTORY START =====");
+  if (start >= 0) {
     const end = "// ===== NGO-DIRECTORY END =====";
-    const b = rrt.indexOf(end) + end.length + 1;
+    const e = rrt.indexOf(end, start);
+    if (e < 0) throw new Error("The rules have the directory's start marker but not its end marker; fix them by hand.");
+    const a = rrt.lastIndexOf("\n", start) + 1;
+    let b = e + end.length;
+    if (rrt[b] === "\n") b++;
     rrt = rrt.slice(0, a) + rrt.slice(b);
   }
   const last = rrt.lastIndexOf("}");

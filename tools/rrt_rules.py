@@ -24,9 +24,16 @@ def block():
 
 
 def merge(rrt):
-    if START.strip() in rrt:
-        a = rrt.index(START)
-        b = rrt.index(END) + len(END) + 1
+    # An earlier copy of the block (however it was indented) is replaced, never doubled.
+    start = rrt.find(START.strip())
+    if start >= 0:
+        e = rrt.find(END, start)
+        if e < 0:
+            raise SystemExit("The rules have the directory's start marker but not its end marker; fix them by hand.")
+        a = rrt.rfind("\n", 0, start) + 1
+        b = e + len(END)
+        if rrt[b:b + 1] == "\n":
+            b += 1
         rrt = rrt[:a] + rrt[b:]
     last = rrt.rindex("}")
     inner = rrt.rindex("}", 0, last)

@@ -120,7 +120,15 @@ Admins: the owner email in `firestore.rules`, Rapid Response's active super
 admins (their `admins` records), and anyone listed in `ngo/dir/config/admins`
 (field `emails`).
 
-### Turning it on (rrt-new-backend, two steps in the Firebase console)
+### Turning it on (rrt-new-backend)
+
+From the terminal (uses your `firebase login`; reads the LIVE rules, keeps a
+backup, adds or replaces only the directory block, publishes after you type
+"yes", turns on email link sign-in and adds the site domains):
+
+    cd tools/rrt-rules && npm install && npx firebase login && node sync.mjs
+
+Or by hand in the Firebase console:
 
 1. Authentication > Sign-in method: **Google** on, and **Email/Password** with
    **Email link (passwordless sign-in)** on. Settings > Authorized domains:

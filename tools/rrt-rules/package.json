@@ -1,0 +1,7 @@
+{
+  "name": "ngo-finder-rrt-rules",
+  "private": true,
+  "type": "module",
+  "description": "Publishes the directory's rules block into rrt-new-backend's live Firestore rules, and turns on its sign-in methods.",
+  "dependencies": { "firebase-tools": "15.31.0" }
+}
