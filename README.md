@@ -54,6 +54,24 @@ bash run.sh && bash deploy.sh
 - Type pills (Animal welfare, Wildlife, Gaushala) and the filter button work in
   every view. Every view has its own link (Copy link).
 
+## On rapid-response.in
+
+The directory also runs at https://rapid-response.in/ngos, inside the Rapid
+Response site's header and footer and in its theme. That page (ngos.html in
+Website-RRT) holds an empty `<div id="ngo-app" class="ngo-rr">`, loads
+`/ngo-app/rr.css` and `/ngo-app/app.js`, and Website-RRT's vercel.json
+forwards `/ngo-app/*` to this deployment, so the data stays in one place and
+monthly refreshes show up there too.
+
+- `app.js` loads its data and add-ons from beside itself, and builds its own
+  markup when it finds `#ngo-app` (no side rail there; Overview, All states,
+  Needs and About sit in a row under the site header).
+- `rr.css` is generated on every build by `scraper/rrcss.py`: styles.css plus
+  `scraper/web/rr-theme.css` (square corners, hairlines, Archivo headings,
+  mono labels, data in ink, red only for the main action), every rule scoped
+  to `.ngo-rr` so nothing touches the rest of the page. Change the look in
+  rr-theme.css, never in rr.css.
+
 ## Federation (groups sign in, get verified, post needs)
 
 Pages: `join.html` for groups, coordinators and anyone reporting a problem;

@@ -143,7 +143,7 @@ function loadImage(file) {
 let DIR = null;
 export async function directory() {
   if (!DIR) {
-    const r = await fetch("data/ngos.json", { cache: "no-cache" });
+    const r = await fetch(new URL("../data/ngos.json", import.meta.url), { cache: "no-cache" });
     if (!r.ok) throw new Error("Directory could not be loaded.");
     DIR = await r.json();
     DIR.orgs.forEach((o) => { o._id = gidOf(o); o._f = fold([o.n, (o.k || []).join(" "), o.a, o.d, o.st, o.ac].join(" ")); });

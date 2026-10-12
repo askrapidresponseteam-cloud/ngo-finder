@@ -907,6 +907,52 @@ class TestNationwide(unittest.TestCase):
 
 
 
+class TestRapidResponseEmbed(unittest.TestCase):
+    def test_every_rule_is_scoped_to_the_container(self):
+        from scraper import rrcss
+        css = rrcss.build()
+        body = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+        body = re.sub(r"@keyframes[^{]*\{([^{}]*\{[^{}]*\})*[^{}]*\}", "", body)
+        for sel in re.findall(r"([^{}]+)\{[^{}]*\}", body):
+            for part in sel.replace("@media", "").split(","):
+                part = part.strip()
+                if part.startswith("(") or not part:
+                    continue
+                self.assertTrue(part.startswith(".ngo-rr"), part)
+
+    def test_scoping(self):
+        from scraper import rrcss
+        out = rrcss.scope(":root{--a:1}html,body{margin:0}.a,.b:not(.c,.d){x:y}@media (max-width:9px){h1{z:1}}@keyframes k{to{o:1}}")
+        self.assertIn(".ngo-rr{--a:1}", out)
+        self.assertIn(".ngo-rr{margin:0}", out)
+        self.assertIn(".ngo-rr .a,.ngo-rr .b:not(.c,.d){x:y}", out)
+        self.assertIn("@media (max-width:9px){.ngo-rr h1{z:1}}", out)
+        self.assertIn("@keyframes k{to{o:1}}", out)
+
+    def test_site_ships_the_themed_sheet_and_loads_from_beside_the_script(self):
+        out = tempfile.mkdtemp()
+        lookup_page.copy_static(out)
+        self.assertTrue(os.path.exists(os.path.join(out, "rr.css")))
+        with open(os.path.join(ROOT, "scraper", "web", "app.js"), encoding="utf-8") as fh:
+            js = fh.read()
+        self.assertNotRegex(js, r'fetch\("data/')
+        self.assertNotIn('import("./', js)
+        for f in ("common.js", "public.js"):
+            with open(os.path.join(ROOT, "scraper", "web", "fed", f), encoding="utf-8") as fh:
+                self.assertNotRegex(fh.read(), r'(fetch\("data/|href: "join\.html)')
+
+    def test_embedded_markup_has_every_icon_and_control(self):
+        with open(os.path.join(ROOT, "scraper", "web", "index.html"), encoding="utf-8") as fh:
+            page = fh.read()
+        with open(os.path.join(ROOT, "scraper", "web", "app.js"), encoding="utf-8") as fh:
+            js = fh.read()
+        for sym in re.findall(r'<symbol id="([^"]+)"', page):
+            self.assertIn('id="%s"' % sym, js, sym)
+        for i in ("types", "searchbox", "q", "clear", "crumbs", "title", "sub", "filterBtn", "filterDot", "share",
+                  "filters", "fContact", "fPeople", "fAwbi", "fVerified", "fFed", "view", "foot", "toast", "needsBtn"):
+            self.assertIn('id="%s"' % i, js, i)
+
+
 class TestFederation(unittest.TestCase):
     def test_site_build_ships_federation_files_but_not_the_mock(self):
         out = tempfile.mkdtemp()

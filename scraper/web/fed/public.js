@@ -4,6 +4,8 @@ import { backend } from "./api.js";
 import { el, NEED_KINDS, fmtDate } from "./common.js";
 
 const KIND = Object.fromEntries(NEED_KINDS);
+// The portal sits next to this folder, wherever the directory is served from.
+const JOIN = new URL("../join.html", import.meta.url).href;
 const INTAKE = { open: "Taking animals in", limited: "Limited space", full: "Full right now" };
 
 export async function attach() {
@@ -31,8 +33,8 @@ export async function attach() {
       const box = el("div", { cls: "fed-box" });
       d.appendChild(box);
       const links = el("div", { cls: "row-actions" }, [
-        verified[o._id] ? null : el("a", { cls: "act", href: "join.html?g=" + encodeURIComponent(o._id), text: "Is this your group? Claim it" }),
-        el("a", { cls: "act", href: "join.html?report=" + encodeURIComponent(o._id) + "&name=" + encodeURIComponent(o.n), text: "Report a problem" })
+        verified[o._id] ? null : el("a", { cls: "act", href: JOIN + "?g=" + encodeURIComponent(o._id), text: "Is this your group? Claim it" }),
+        el("a", { cls: "act", href: JOIN + "?report=" + encodeURIComponent(o._id) + "&name=" + encodeURIComponent(o.n), text: "Report a problem" })
       ]);
       if (!verified[o._id]) { box.appendChild(links); return; }
       Promise.all([B.profile(o._id), B.needsFor(o._id)]).then(([p, needs]) => {

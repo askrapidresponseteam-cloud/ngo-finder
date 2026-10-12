@@ -12,6 +12,53 @@
   var FED = null, VERIFIED = {};  // federation add-ons (fed/public.js), when set up
   var view;
 
+  // Data and add-ons load from beside this script, so the directory also runs
+  // inside another site's page (rapid-response.in/ngos) from a container
+  // <div id="ngo-app" class="ngo-rr"></div>.
+  var BASE = (function () {
+    var s = document.currentScript;
+    try { return s && s.src ? new URL(".", s.src).href : ""; } catch (e) { return ""; }
+  })();
+  var ROOT = null, SITE = "Animal NGOs of India", SUFFIX = "";
+  var SPRITE = '<svg class="sprite" aria-hidden="true"><defs><symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></symbol><symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></symbol><symbol id="i-search" viewBox="0 0 24 24"><circle cx="10" cy="10" r="7"/><path d="m15 15 6 6"/></symbol><symbol id="i-filter" viewBox="0 0 24 24"><path d="M3 7h18M3 17h18"/><circle cx="9" cy="7" r="3" class="hole"/><circle cx="15" cy="17" r="3" class="hole"/></symbol><symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></symbol><symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></symbol><symbol id="i-arrow" viewBox="0 0 24 24"><path d="M7 17 17 7M7 7h10v10"/></symbol><symbol id="i-back" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></symbol><symbol id="i-heart" viewBox="0 0 24 24"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></symbol><symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol><symbol id="i-paw" viewBox="0 0 24 24"><ellipse cx="12" cy="16" rx="4.5" ry="3.8"/><circle cx="6" cy="10.5" r="1.9"/><circle cx="9.6" cy="6.6" r="1.9"/><circle cx="14.4" cy="6.6" r="1.9"/><circle cx="18" cy="10.5" r="1.9"/></symbol><symbol id="i-leaf" viewBox="0 0 24 24"><path d="M5 19c0-8 5-14 15-14 0 10-6 15-14 15"/><path d="M5 19 13 11"/></symbol><symbol id="i-cow" viewBox="0 0 24 24"><path d="M6 8 3 6M18 8l3-2"/><rect x="6" y="7" width="12" height="11" rx="5"/><path d="M9.5 15h.01M14.5 15h.01"/></symbol></defs></svg>';
+  function mount() {
+    var host = document.getElementById("ngo-app");
+    if (!host || document.getElementById("view")) return;
+    ROOT = host;
+    SUFFIX = host.getAttribute("data-title-suffix") || "";
+    host.innerHTML = SPRITE +
+      '<div class="shell embed">' +
+      '<div class="eyebar"><span class="eyebrow">' + (host.getAttribute("data-eyebrow") || "Animal NGO directory").replace(/[&<>"]/g, function (c) { return "&#" + c.charCodeAt(0) + ";"; }) + '</span>' +
+      '<nav class="viewnav" aria-label="Sections">' +
+      '<button type="button" data-go="home">Overview</button>' +
+      '<button type="button" data-go="states">All states</button>' +
+      '<button type="button" data-go="needs" id="needsBtn" hidden>Needs</button>' +
+      '<button type="button" data-go="about">About the data</button></nav></div>' +
+      '<section class="intro"><div class="intro-text"><div class="crumbs" id="crumbs"></div>' +
+      '<h1 id="title">Animal NGOs of India</h1><div class="muted" id="sub">Loading the directory...</div></div>' +
+      '<div class="tools"><button class="round" id="filterBtn" type="button" aria-label="Filters" aria-expanded="false" aria-controls="filters">' +
+      '<svg class="icon"><use href="#i-filter"/></svg><span class="dot" id="filterDot"></span></button>' +
+      '<button class="pill blue" id="share" type="button"><svg class="icon"><use href="#i-link"/></svg>Copy link</button></div></section>' +
+      '<header class="top"><nav class="types" id="types" aria-label="Type of group"></nav>' +
+      '<label class="searchbox" id="searchbox"><svg class="icon"><use href="#i-search"/></svg>' +
+      '<input id="q" type="search" autocomplete="off" placeholder="Group, person or town" aria-label="Search groups, people or towns">' +
+      '<button class="clear" id="clear" type="button" aria-label="Clear search"><svg class="icon"><use href="#i-x"/></svg></button></label></header>' +
+      '<div class="filters card" id="filters" hidden>' +
+      '<label><input type="checkbox" id="fContact"> Has a phone or email</label>' +
+      '<label><input type="checkbox" id="fPeople"> We know who runs it</label>' +
+      '<label><input type="checkbox" id="fAwbi"> AWBI recognised</label>' +
+      '<label><input type="checkbox" id="fVerified"> Hide unverified web finds</label>' +
+      '<label hidden><input type="checkbox" id="fFed"> Only groups verified by the federation</label></div>' +
+      '<main id="view" aria-live="polite"><div class="loading"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div></main>' +
+      '<footer class="foot" id="foot" hidden></footer></div>' +
+      '<div class="toast" id="toast" role="status"></div>';
+  }
+  function scope() { return ROOT || document; }
+  function toTop() {
+    if (!ROOT) { window.scrollTo(0, 0); return; }
+    if (ROOT.getBoundingClientRect().top < 0) ROOT.scrollIntoView();
+  }
+
   // ---------------------------------------------------------------- helpers
   function $(id) { return document.getElementById(id); }
   function el(tag, attrs, kids) {
@@ -102,7 +149,7 @@
     st.v = o.v || ""; st.state = o.state || null; st.district = o.district || null;
     st.q = o.q != null ? o.q : ""; st.shown = PAGE;
     q.value = st.q; box.classList.toggle("has", !!st.q);
-    sync(true); render(); window.scrollTo(0, 0);
+    sync(true); render(); toTop();
   }
 
   function passes(o) {
@@ -515,11 +562,11 @@
     });
     $("title").textContent = title;
     $("sub").textContent = sub;
-    document.title = title === "Animal NGOs of India" ? title : title + " | Animal NGOs of India";
+    document.title = (title === SITE ? title : title + " | " + SITE) + SUFFIX;
   }
   function railOn() {
     var which = st.q ? "search" : st.v === "needs" ? "needs" : (st.v || st.state) ? "states" : "home";
-    Array.prototype.forEach.call(document.querySelectorAll("[data-go]"), function (b) {
+    Array.prototype.forEach.call(scope().querySelectorAll("[data-go]"), function (b) {
       b.classList.toggle("on", b.getAttribute("data-go") === which);
     });
   }
@@ -818,7 +865,7 @@
   function toggleFilters(force) {
     var f = $("filters"), open = force != null ? force : f.hidden;
     f.hidden = !open; $("filterBtn").setAttribute("aria-expanded", String(open));
-    if (open) { window.scrollTo(0, 0); $("fContact").focus(); }
+    if (open) { toTop(); $("fContact").focus(); }
   }
 
   // Same id as fed/common.js gidOf: claims, profiles and needs attach to it.
@@ -830,7 +877,7 @@
   // Verified badges, needs and claim links come from the federation backend, if it is set up.
   function loadFederation() {
     if (!/^https?:$/.test(location.protocol)) return;
-    import("./fed/public.js")
+    import(BASE + "fed/public.js")
       .then(function (m) { return m.attach(); })
       .then(function (fed) {
         if (!fed) return;
@@ -892,19 +939,20 @@
     });
     on($("share"), copyLink);
 
-    Array.prototype.forEach.call(document.querySelectorAll("[data-go]"), function (b) {
+    Array.prototype.forEach.call(scope().querySelectorAll("[data-go]"), function (b) {
       on(b, function () {
         var g = b.getAttribute("data-go");
         if (g === "home") go({});
         else if (g === "states") go({ v: "states" });
         else if (g === "needs") go({ v: "needs" });
-        else if (g === "search") { window.scrollTo(0, 0); q.focus(); }
+        else if (g === "search") { toTop(); q.focus(); }
         else if (g === "filters") toggleFilters();
         else if (g === "share") copyLink();
         else if (g === "about") foot.scrollIntoView({ behavior: "smooth" });
       });
     });
-    on(document.querySelector(".logo"), function (e) { e.preventDefault(); go({}); });
+    var logo = document.querySelector(".shell .logo");
+    if (logo) on(logo, function (e) { e.preventDefault(); go({}); });
 
     q = $("q"); box = $("searchbox");
     var timer, typing = false;
@@ -940,14 +988,15 @@
   }
 
   function start() {
+    mount();
     var inline = document.getElementById("data");
     if (inline && /^\s*\{/.test(inline.textContent)) {
       try { boot(JSON.parse(inline.textContent)); } catch (e) { fail("The directory data could not be read."); }
       return;
     }
     // The map outlines are a separate file; the directory still works without them.
-    var shapes = fetch("data/india-map.json").then(function (r) { return r.ok ? r.json() : {}; }, function () { return {}; });
-    fetch("data/ngos.json", { cache: "no-cache" })
+    var shapes = fetch(BASE + "data/india-map.json").then(function (r) { return r.ok ? r.json() : {}; }, function () { return {}; });
+    fetch(BASE + "data/ngos.json", { cache: "no-cache" })
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
       .then(function (db) {
         return shapes.then(function (m) {

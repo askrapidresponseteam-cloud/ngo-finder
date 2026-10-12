@@ -16,7 +16,7 @@ import shutil
 from datetime import date
 from urllib.parse import urlparse
 
-from . import geo, networks
+from . import geo, networks, rrcss
 from .classify import categories
 from .dataset import SNAPSHOT_DATE
 from .export import sort_key
@@ -199,4 +199,6 @@ def copy_static(out_dir):
         target = os.path.join(out_dir, name)
         shutil.rmtree(target, ignore_errors=True)
         shutil.copytree(os.path.join(WEB, name), target, ignore=shutil.ignore_patterns("mock.js"))
+    # The same directory, themed and scoped for rapid-response.in/ngos.
+    rrcss.write(os.path.join(out_dir, "rr.css"))
     return out_dir

@@ -39,7 +39,7 @@ for f in FED_FILES:
                 errors.append("long dash found in " + f)
 if os.path.exists(os.path.join(SITE, "fed", "mock.js")):
     errors.append("fed/mock.js is for local testing only and must not be published")
-for f in ("index.html", "app.js", "styles.css", "vercel.json", "favicon.svg", "data/ngos.json", "data/india-map.json"):
+for f in ("index.html", "app.js", "styles.css", "rr.css", "vercel.json", "favicon.svg", "data/ngos.json", "data/india-map.json"):
     if not os.path.exists(os.path.join(SITE, f)):
         errors.append("missing file: " + f)
 if not errors:
