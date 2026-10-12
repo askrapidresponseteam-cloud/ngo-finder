@@ -186,6 +186,15 @@ def spread_points(state, district, k):
     return chosen
 
 
+def grid_points(state, district, step=0.04):
+    """Every PIN code location in a district, one per grid cell of `step` degrees
+    (about 4.5 km), so a dense sweep does not ask the same area twice."""
+    cells = {}
+    for lat, lon in sorted(set(_pins_by_district().get((state, district), []))):
+        cells.setdefault((round(lat / step), round(lon / step)), (lat, lon))
+    return list(cells.values())
+
+
 def pin_count(state, district):
     return len(_pins_by_district().get((state, district), []))
 

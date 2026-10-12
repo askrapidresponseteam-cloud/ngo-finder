@@ -55,6 +55,11 @@ CENTRE_TERMS = ["animal trust", "animal shelter", "animal rescue", "animal welfa
                 "gopal goshala"]
 # Asked around each extra point inside a district.
 POINT_TERMS = ["animal", "gaushala", "rescue", "shelter", "goshala", "dog", "cow", "jeev"]
+# A deep sweep (scraper.deep, one state at a time) asks these at every PIN code area,
+# including the Kannada spellings people use in Karnataka (goshaale, gosaale).
+DEEP_TERMS = ["gaushala", "goshala", "goshaale", "gosaale", "gowshala", "animal shelter", "animal rescue",
+              "dog shelter", "animal welfare", "pinjrapole"]
+DEEP_RADIUS = 6000
 CENTRE_RADIUS = 40000  # metres
 POINT_RADIUS = 15000
 PINS_PER_POINT = 10    # one extra point per this many PIN codes in a district...
@@ -78,9 +83,21 @@ def _loc(state, district):
     return "{},{}".format(lat, lon) if lat and lon else ""
 
 
-def plan(only=None, states=None):
-    """(input, state, district, location, radius) for every autocomplete call."""
+def plan(only=None, states=None, deep=False):
+    """(input, state, district, location, radius) for every autocomplete call.
+    deep: every PIN code area of the given states, with DEEP_TERMS."""
     out = []
+    if deep:
+        for st in geo.states():
+            if states and st not in states:
+                continue
+            for d in geo.districts_of(st):
+                if only and d not in only:
+                    continue
+                for lat, lon in geo.grid_points(st, d):
+                    loc = "{},{}".format(lat, lon)
+                    out += [(t, st, d, loc, DEEP_RADIUS) for t in DEEP_TERMS]
+        return out
     for st in geo.states():
         if states and st not in states:
             continue
@@ -112,6 +129,7 @@ def plan(only=None, states=None):
 # labs, gyms and shops, so an animal word with only "care" or "centre" is not enough.
 GAUSHALA_NAME = re.compile(
     r"go ?shala|go ?sala|gou ?sala|gow ?sala|goshal|gau ?shala|gaushal|gausala|gaushaala|gow ?shala|gowshal|gou ?shala|goushal|"
+    r"\bg(o|au|ou|ow)[ -]?s+h?aa?l(a|e|ai)\b|"
     r"pinjra|panjra|pinjara|panjara|\b(gau|go|gou|gow)[ -]?(seva|sewa|sadan|dham|raksha|rakshan|mata|ashram|ashrama|aashram|sanvardhan|samvardhan|sanrakshan|samrakshan|samrakshana|palan|nivas|dhaam|swarga)|gausadan|gaudham|gaumata|govansh|gosamrakshan|gorakshan|"
     r"\bjee?v ?(daya|raksha)|\bjiv ?(daya|raksha)|jivdaya|jeevdaya|prani ?(daya|mitra|seva|kalyan)", re.I)
 NETWORK_NAME = re.compile(
@@ -385,10 +403,10 @@ def _notice(text):
         print("::notice::" + text.replace("\n", " "), flush=True)
 
 
-def sweep(http, key, cap=90000, only=None, log=print, workers=3, with_details=True, states=None):
+def sweep(http, key, cap=90000, only=None, log=print, workers=3, with_details=True, states=None, deep=False):
     """Search every query in the plan; return Org records for shelters found."""
     usage = Usage(cap, path=USAGE_FILE)
-    queries = plan(only, states)
+    queries = plan(only, states, deep)
     log("  Ola Maps: {} searches planned, {} of {} monthly requests already used".format(
         len(queries), usage.used, cap))
     found, info = {}, {"queries": 0, "stopped": "", "errors": 0}

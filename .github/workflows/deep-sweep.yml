@@ -1,0 +1,58 @@
+name: Deep sweep
+
+# Asks every PIN code area of the chosen states for gaushalas, shelters and
+# rescues (scraper/deep.py) and ADDS new listings to the live directory.
+# Nothing already listed changes; other states are untouched.
+
+on:
+  workflow_dispatch:
+    inputs:
+      states:
+        description: "States to sweep, comma separated"
+        required: true
+        default: "Karnataka"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: refresh-data
+  cancel-in-progress: false
+
+jobs:
+  deep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    env:
+      OLA_MAPS_API_KEY: ${{ secrets.OLA_MAPS_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Keep the monthly request counter and search cache between runs
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ka-ngo-scraper
+          key: ka-ngo-cache-${{ github.run_id }}
+          restore-keys: ka-ngo-cache-
+      - name: Regression tests
+        run: python -m unittest discover -s tests -q
+      - name: Sweep
+        run: python -m scraper.deep --states "${{ inputs.states }}" --save output/deep-found.json
+      - name: Add to the newest data and check it
+        run: |
+          git checkout -- site/data/ngos.json
+          git pull --rebase origin main
+          python -m scraper.deep --states "${{ inputs.states }}" --add-from output/deep-found.json
+          python check_site.py
+      - name: Publish
+        run: |
+          git config user.name "ngo-finder-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add site/data/ngos.json
+          git commit -m "Deep sweep: ${{ inputs.states }} ($(date -u +%Y-%m-%d))" || exit 0
+          git pull --rebase origin main
+          git push origin HEAD:main

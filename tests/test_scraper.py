@@ -1077,6 +1077,27 @@ class TestOlaNames(unittest.TestCase):
         self.assertEqual(bad, [])
 
 
+class TestDeepSweep(unittest.TestCase):
+    def test_every_pin_area_of_the_state_with_local_spellings(self):
+        q = ola_places.plan(None, ["Karnataka"], deep=True)
+        self.assertTrue(q and all(x[1] == "Karnataka" for x in q))
+        self.assertIn("goshaale", {x[0] for x in q})
+        self.assertGreater(len({x[3] for x in q}), 500)
+
+    def test_kannada_spellings_are_gaushalas(self):
+        for n in ("Sri Onkar Goshaale", "Rashtrotthana Goshaale", "SSBK Datta Dhaama Goshale", "Kamdhenu Go-Shala"):
+            self.assertTrue(ola_places.name_ok(n), n)
+
+    def test_adds_only_what_is_not_listed(self):
+        from scraper import deep
+        have = [{"n": "Maadhiam Goshala", "st": "Karnataka", "d": "Bengaluru Urban", "m": "https://www.google.com/maps?q=1,2"}]
+        new = [{"n": "maadhiam goshala", "st": "Karnataka", "d": "Bengaluru Urban", "m": ""},
+               {"n": "Maadhiam GauShala", "st": "Karnataka", "d": "Bengaluru Urban", "m": "https://www.google.com/maps?q=1,2"},
+               {"n": "SSBK Datta Dhaama Goshale", "st": "Karnataka", "d": "Bengaluru Rural", "m": "https://www.google.com/maps?q=3,4"},
+               {"n": "SSBK Datta Dhaama Goshale", "st": "Karnataka", "d": "Bengaluru Rural", "m": ""}]
+        self.assertEqual([r["n"] for r in deep.add(have, new)], ["SSBK Datta Dhaama Goshale"])
+
+
 class TestFederation(unittest.TestCase):
     def test_site_build_ships_federation_files_but_not_the_mock(self):
         out = tempfile.mkdtemp()
