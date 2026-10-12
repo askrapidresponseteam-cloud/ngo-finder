@@ -568,6 +568,19 @@ class TestOla(unittest.TestCase):
         self.assertTrue(any("[skip] Happy Tails Pet Clinic" in line for line in out))
         self.assertTrue(http.params[-1].get("place_id"), "details looks up the first place found")
 
+    def test_names_from_the_first_all_india_run(self):
+        good = ["Tatanagar GauShala", "Gauri Gopala GauShala", "Asare Animal Trust", "Mysore Snake Rescue",
+                "Calcutta Pinjrapole Society Liluah Gosala", "Gau Seva Sadan", "Hope For Animals Rescue Shelter",
+                "Fauna On Rescue", "Bombay Panjrapole Cow Shelter Home", "Yahshua Animal Trust"]
+        bad = ["India Shelter Home Loans", "Public Night Shelter", "Nagaram Bus Shelter", "Animal Husbandry",
+               "Gaurav Krishi Seva Kendra", "Dog Squad Office", "Fire And Rescue Services", "Go Gas Bunk Honakeri",
+               "Anamalai Tiger Reserve", "20-41, Near GauShala", "The Force Dog Training Centre",
+               "OYO 9316 Green Shelter Guest House", "Shelter Home For Urban Homeless", "Alivira Animal Health"]
+        for n in good:
+            self.assertTrue(self.ola.name_ok(n), n)
+        for n in bad:
+            self.assertFalse(self.ola.name_ok(n), n)
+
     def test_only_animal_groups_are_kept(self):
         item = lambda n: {"name": n, "address": "Karnataka", "types": [], "closed": False}
         for n in ("Asare Animal Trust", "Sri Krishna Gaushala", "Pinjrapole Deesa", "Visakha SPCA"):
@@ -764,8 +777,13 @@ class TestDataset(unittest.TestCase):
         return [o for o in self.orgs if o.name == name or name in o.aka]
 
     def test_size_and_snapshot(self):
-        self.assertGreaterEqual(len(self.orgs), 160)
-        self.assertEqual(sum(1 for o in self.orgs if o.awbi_code), 84)
+        ka = [o for o in self.orgs if o.state == "Karnataka"]
+        self.assertGreaterEqual(len(ka), 160)
+        self.assertEqual(sum(1 for o in ka if o.awbi_code), 84)
+        from scraper import dataset
+        if os.path.exists(dataset.NATIONAL_SNAPSHOT):  # saved by the all-India refresh
+            self.assertGreater(sum(1 for o in self.orgs if o.awbi_code), 3000)
+            self.assertGreaterEqual(len({o.state for o in self.orgs}), 30)
 
     def test_pfa_bangalore_and_wildlife_hospital_are_one_group(self):
         hits = self.find("PFA Wildlife Hospital")
@@ -786,8 +804,13 @@ class TestDataset(unittest.TestCase):
         self.assertNotIn("Wildlife Rescue and Rehabilitation Centre", arrt.aka)
 
     def test_every_group_is_valid(self):
+        from scraper import geo
         for o in self.orgs:
-            self.assertIn(o.district, districts.DISTRICTS, o.name)
+            self.assertIn(o.state, geo.states(), o.name)
+            if o.state == "Karnataka":
+                self.assertIn(o.district, districts.DISTRICTS, o.name)
+            else:
+                self.assertIn(o.district, geo.districts_of(o.state) + [""], o.name)
             self.assertTrue(o.source_urls, o.name)
             for u in [o.website] + o.social + o.source_urls:
                 self.assertTrue(not u or u.startswith(("http://", "https://")), (o.name, u))
@@ -806,6 +829,11 @@ class TestGeo(unittest.TestCase):
         self.assertEqual(len(geo.districts_of("Karnataka")), 31)
         self.assertIn("Vijayanagara", geo.districts_of("Karnataka"))
         self.assertGreater(sum(len(geo.districts_of(s)) for s in geo.states()), 700)
+
+    def test_every_district_alias_points_at_a_real_district(self):
+        from scraper import geo
+        for (st, alias), d in geo.DISTRICT_ALIASES.items():
+            self.assertIn(d, geo.districts_of(st), alias)
 
     def test_normalise_names(self):
         from scraper import geo

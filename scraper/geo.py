@@ -36,9 +36,9 @@ DISTRICT_ALIASES = {
     ("Telangana", "secunderabad"): "Hyderabad", ("Maharashtra", "poona"): "Pune",
     ("Kerala", "trivandrum"): "Thiruvananthapuram", ("Kerala", "cochin"): "Ernakulam",
     ("Kerala", "calicut"): "Kozhikode", ("Kerala", "trichur"): "Thrissur", ("Kerala", "palghat"): "Palakkad",
-    ("Kerala", "cannanore"): "Kannur", ("Andhra Pradesh", "vizag"): "Visakhapatnam",
-    ("Tamil Nadu", "trichy"): "Tiruchirappalli", ("Tamil Nadu", "tuticorin"): "Thoothukudi",
-    ("Odisha", "cuttak"): "Cuttack", ("Punjab", "mohali"): "Sas Nagar",
+    ("Kerala", "cannanore"): "Kannur", ("Andhra Pradesh", "vizag"): "Visakhapatanam", ("Andhra Pradesh", "visakhapatnam"): "Visakhapatanam",
+    ("Tamil Nadu", "trichy"): "Tiruchirappalli", ("Tamil Nadu", "thoothukudi"): "Tuticorin",
+    ("Odisha", "cuttak"): "Cuttack", ("Punjab", "mohali"): "S.a.s Nagar", ("Punjab", "sas nagar"): "S.a.s Nagar",
 }
 
 

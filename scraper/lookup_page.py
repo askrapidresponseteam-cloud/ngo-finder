@@ -20,6 +20,7 @@ from . import geo
 from .classify import categories
 from .dataset import SNAPSHOT_DATE
 from .export import sort_key
+from .sources import ola_places
 
 WEB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
 STATIC = ["index.html", "styles.css", "app.js", "favicon.svg", "vercel.json", "robots.txt"]
@@ -134,6 +135,8 @@ def state_shapes():
 def payload(orgs, generated=None):
     data = _dedupe([_valid_place(_tidy(record(o))) for o in sorted(orgs, key=sort_key)])
     data = [r for r in data if r["sr"] or r["m"] or r["ad"]]  # nothing to check it against: leave out
+    # Map listings found by name alone must clearly be an animal group (see ola_places.name_ok).
+    data = [r for r in data if r["src"] != ["Ola Maps"] or ola_places.name_ok(r["n"])]
     meta = {
         "date": (generated or date.today()).strftime("%d %b %Y").lstrip("0"),
         "awbi_date": SNAPSHOT_DATE,

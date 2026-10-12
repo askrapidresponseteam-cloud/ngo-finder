@@ -96,13 +96,37 @@ def plan(only=None, states=None):
     return out
 
 
+# A map listing is kept only if its name clearly says animals, cattle or wildlife...
+ANIMAL_NAME = re.compile(
+    r"animal|fauna|compassion|cruelty|voiceless|humane|\bgau(?!rav|ri\b|tam)|\bgou|\bgow|go ?shala|gosala|goshal|gaushal|\bcows?\b|cattle|pinjra|panjra|pinjara|panjara|"
+    r"panjrapol|\bdogs?\b|\bcats?\b|\bbirds?\b|pashu|\bjeev|\bjiv|prani|wild ?life|snake|reptile|spca|"
+    r"people for animals|\bpfa\b|blue cross|stray|nandi|kam(a)?dhenu|bovine|\bpets?\b|paws|canine|horse|"
+    r"donkey|turtle|elephant|monkey|vulture|karuna|sarp|go ?seva|gau ?seva|gausadan|go ?sadan|go ?dham|gaudham", re.I)
+# ...and does not name something else that happens to use those words.
+NOT_ANIMAL_NGO = re.compile(
+    r"loans?\b|finance|layout|residency|realty|builders?\b|developers?\b|construction|architect|guest ?house|"
+    r"\boyo\b|paying guest|\bhotel|resort|convention|\bbus\b|book|gift|\bcave|rock shelter|pilgrim|yatri|"
+    r"training|husbandry|department|directorate|night shelter|homeless|women|nari|flood|cyclone|\bfire\b|"
+    r"disaster|old ?age|orphan|child|\bboys\b|girls|rain basera|food shelter|dairy|\bmilk|meat|chicken|"
+    r"poultry|\bfish|\bfeeds?\b|bird sanctuary|wildlife sanctuary|national park|tiger reserve|\bzoo\b|"
+    r"\bforest\b|range office|museum|statue|\bsalon|grooming|kennel club|\bshow\b|cafe|\bfood\b|"
+    r"\bsquad|police|facility|genetics|division|institute|university|college|research|\bmandi|"
+    r"market|^near\b|\bnear (the )?(gau|go)|in ?front|\bopp\b|opposite|maidan|kingdom|health ?care|animal health\b|"
+    r"restaurant|biryani|\bdhaba|bakery|sweets|petrol|pet ?(shop|store|mart|zone|food|world|planet|house)|"
+    r"\bdairy|ghee|panchgavya|gobar|\bgas\b|photo|studio|tattoo|school|academy", re.I)
+
+
+def name_ok(name):
+    return bool(ANIMAL_NAME.search(name or "")) and not NOT_ANIMAL_NGO.search(name or "")
+
+
 def ola_candidate(item):
     """A listing worth keeping: plausibly an NGO, and animal-related by name."""
     if not candidate(item["name"], item["address"], item["types"], item["closed"], require_state=False):
         return False
     if NOT_A_GROUP.search(item["name"]):
         return False
-    return is_relevant(item["name"]) or bool(PINJRAPOLE.search(item["name"]))
+    return name_ok(item["name"])
 
 
 class OlaError(Exception):

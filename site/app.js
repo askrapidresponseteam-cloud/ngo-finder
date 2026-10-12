@@ -189,7 +189,7 @@
     });
     spots.sort(function (a, b) { return b.n - a.n; }).forEach(function (s) {
       var c = sv("circle", { "class": "spot", cx: p.x(s.lon).toFixed(1), cy: p.y(s.lat).toFixed(1),
-        r: (unit * Math.min(3.2 + Math.sqrt(s.n) * 1.9, 15)).toFixed(2), tabindex: "0", role: "button",
+        r: (zoom > 1.6 ? unit * Math.min(3.2 + Math.sqrt(s.n) * 1.9, 15) : Math.min(1.8 + Math.sqrt(s.n) * 0.9, 8)).toFixed(2), tabindex: "0", role: "button",
         "aria-label": s.label + ", " + plural(s.n, "group") });
       c.appendChild(sv("title", {})).textContent = s.label + ": " + plural(s.n, "group");
       c.addEventListener("click", s.go);
@@ -362,7 +362,7 @@
     var topStates = card("", [el("div", { cls: "label", text: "Top states" }), el("div", { cls: "number", text: fmt(states.length) }),
       el("div", { cls: "caption", text: "with groups listed" }), corner("All states", function () { go({ v: "states" }); }),
       rankRows(states, list.length, TOP, function () { go({ v: "states" }); }, function () { return "All states"; })]);
-    var topPlaces = card("", [el("div", { cls: "label", text: "Top districts" }), el("div", { cls: "number", text: fmt(places.length) }),
+    var topPlaces = card("", [el("div", { cls: "label", text: "Top districts" }), el("div", { cls: "number", text: fmt(places.filter(function (p) { return p.name !== "District not known"; }).length) }),
       el("div", { cls: "caption", text: "with groups listed" }),
       rankRows(places, list.length, TOP, null, function (n) { return plural(n, "more district"); })]);
     view.appendChild(el("div", { cls: "dash" }, [map, typeBars(list), quality(list), el("div", { cls: "wide" }, [topStates, topPlaces])]));
