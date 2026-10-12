@@ -47,6 +47,10 @@ bash run.sh && bash deploy.sh
 - **State:** map of that state's districts, ranked district list, then its groups.
 - **District or search:** the groups; tap + for contacts, who runs it, and
   "More details" for addresses, AWBI code and sources.
+- **Search** covers every field of every group across India (names, other
+  names, people, places, addresses, phones, emails, websites, AWBI codes,
+  notes) and finds sound-alike spellings and typos too: ganguli finds Suparna
+  Ganguly, gowshala finds Gaushala and Goshala. Each result says where it matched.
 - Type pills (Animal welfare, Wildlife, Gaushala) and the filter button work in
   every view. Every view has its own link (Copy link).
 
@@ -72,10 +76,10 @@ Most small shelters and rescue trusts only exist as map listings. Ola's
 text search does not answer category searches like "animal shelter", but its
 autocomplete finds places by name near a location, and animal groups nearly
 always have the word in their name. So the scraper asks autocomplete for
-words like "animal trust", "gaushala" and "spca" around the centre of every
-district of India, and "animal", "gaushala", "rescue" and "shelter" around
+32 words like "animal trust", "gaushala", "jeev daya" and "spca" around the centre
+of every district of India, and 8 words like "animal", "goshala" and "dog" around
 spread-out PIN code locations inside it (more in Karnataka). That is about
-18,000 searches, plus one details lookup per group found. Ola's free tier is
+36,000 searches, plus one details lookup per group found. Ola's free tier is
 100,000 requests a month with no billing needed, and the scraper stops
 itself at 90,000 (`--ola-max`). `--ola-check` makes 6 test calls around
 Udupi and Dakshina Kannada and shows what is found.

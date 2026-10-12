@@ -112,16 +112,6 @@
     if (st.verified && o.u) return false;
     return true;
   }
-  function score(o) {
-    if (!st.q) return 1;
-    var words = st.q.toLowerCase().split(/\s+/).filter(Boolean);
-    for (var i = 0; i < words.length; i++) if (o._s.indexOf(words[i]) < 0) return 0;
-    var ql = st.q.toLowerCase(), names = [o.n].concat(o.k).join(" | ").toLowerCase();
-    if (names.indexOf(ql) === 0) return 4;
-    if (names.indexOf(ql) >= 0) return 3;
-    if ((" " + o._i + " ").indexOf(" " + ql) >= 0) return 3;
-    return 1;
-  }
   function pool(scope) {
     return ORGS.filter(function (o) {
       if (scope && scope.state && o.st !== scope.state) return false;
@@ -133,6 +123,179 @@
     var c = {};
     list.forEach(function (o) { var k = key(o); c[k] = (c[k] || 0) + 1; });
     return c;
+  }
+
+  // ---------------------------------------------------------------- search
+  // One index over every field of every group. A query word matches a word in
+  // a record exactly, by its start, by sound (Ganguli = Ganguly, Goshala =
+  // Gaushala = Gowshala), inside a longer word, or with a typo or two.
+  var FIELDS = [
+    // [record key, label shown as "Matched in", weight]
+    ["n", "Name", 10], ["k", "Also known as", 8], ["pp", "People", 8], ["ac", "AWBI code", 7],
+    ["p", "Phone", 6], ["e", "Email", 6], ["w", "Website", 5], ["d", "District", 4], ["st", "State", 4],
+    ["a", "Area", 4], ["ad", "Address", 3], ["ra", "Registered address", 3], ["s", "Social", 3],
+    ["nt", "Notes", 2], ["src", "Source", 1]
+  ];
+  var MARKS = new RegExp("[" + String.fromCharCode(0x300) + "-" + String.fromCharCode(0x36f) + "]", "g");
+  var IDX = null;
+
+  function fold(s) { return String(s || "").normalize("NFD").replace(MARKS, "").toLowerCase(); }
+  function wordsOf(s) { return fold(s).split(/[^a-z0-9]+/).filter(Boolean); }
+  // Sound-alike key for Indian names and spellings.
+  function pk(w) {
+    if (/^[0-9]+$/.test(w)) return w;
+    w = w.replace(/ph/g, "f").replace(/([bdtkgcs])h/g, "$1").replace(/ow(?=[^aeiou]|$)/g, "o")
+      .replace(/au|ou/g, "o").replace(/w/g, "v").replace(/z/g, "j").replace(/q/g, "k").replace(/ck/g, "k")
+      .replace(/ee|ie/g, "i").replace(/oo/g, "u").replace(/y/g, "i").replace(/(.)\1+/g, "$1");
+    return w.length > 4 ? w.replace(/a$/, "") : w;
+  }
+  function lev(a, b, max) {
+    if (Math.abs(a.length - b.length) > max) return max + 1;
+    var prev = [], cur, i, j;
+    for (j = 0; j <= b.length; j++) prev[j] = j;
+    for (i = 1; i <= a.length; i++) {
+      cur = [i];
+      var best = i;
+      for (j = 1; j <= b.length; j++) {
+        cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+        if (cur[j] < best) best = cur[j];
+      }
+      if (best > max) return max + 1;
+      prev = cur;
+    }
+    return prev[b.length];
+  }
+  function fieldText(o, key) {
+    var v = o[key];
+    if (key === "pp") return v.map(function (p) { return p.n + (p.r ? ", " + p.r : ""); });
+    if (key === "p") return v.map(function (x) { return x + " " + x.replace(/[^0-9]/g, ""); });
+    if (key === "st") return [sName(v)];
+    if (key === "d") return [v === "Unknown" ? "" : v];
+    if (Array.isArray(v)) return v;
+    return [v || ""];
+  }
+  function buildIndex() {
+    var vocab = {};
+    ORGS.forEach(function (o, i) {
+      FIELDS.forEach(function (f) {
+        var texts = fieldText(o, f[0]);
+        if (f[0] === "n" || f[0] === "k") texts = texts.concat([initials(texts.join(" "))]);
+        texts.forEach(function (t) {
+          wordsOf(t).forEach(function (w) {
+            var hits = vocab[w] || (vocab[w] = {});
+            if (!hits[i] || hits[i] < f[2]) hits[i] = f[2];
+          });
+        });
+      });
+    });
+    var words = Object.keys(vocab);
+    var keys = {};
+    words.forEach(function (w) { keys[w] = pk(w); });
+    IDX = { vocab: vocab, words: words, keys: keys };
+  }
+  // Words in the index that a query word matches, with how well (4 best).
+  function matchWord(t) {
+    var out = {}, tk = pk(t), digits = /^[0-9]+$/.test(t);
+    var maxd = t.length >= 8 ? 2 : t.length >= 4 ? 1 : 0;
+    IDX.words.forEach(function (w) {
+      var lvl = 0, wk = IDX.keys[w];
+      if (w === t) lvl = 4;
+      else if (w.indexOf(t) === 0) lvl = 3.5;
+      else if (wk === tk) lvl = 3;
+      else if (tk.length >= 3 && wk.indexOf(tk) === 0) lvl = 2.5;
+      else if (t.length >= 4 && w.indexOf(t) > 0) lvl = digits ? 3 : 2;
+      else if (maxd && !digits && tk.length >= 4 && wk.length >= 4 && lev(wk, tk, maxd) <= maxd) lvl = 1.5;
+      else if (t.length >= 5 && !digits && tk.length >= 4 && wk.length > tk.length && lev(wk.slice(0, tk.length), tk, 1) <= 1) lvl = 1;
+      if (lvl) out[w] = lvl;
+    });
+    return out;
+  }
+  // [{o, score, words}] for the current query, best first.
+  function search(query) {
+    if (!IDX) buildIndex();
+    var terms = wordsOf(query).filter(function (t, i, a) { return a.indexOf(t) === i; });
+    if (!terms.length) return { list: [], terms: [], close: false };
+    var per = terms.map(function (t) {
+      var scores = {}, words = matchWord(t);
+      Object.keys(words).forEach(function (w) {
+        var hits = IDX.vocab[w];
+        for (var i in hits) {
+          var s = words[w] * hits[i];
+          if (!scores[i] || scores[i].s < s) scores[i] = { s: s, w: w, lvl: Math.max(words[w], scores[i] ? scores[i].lvl : 0) };
+          else if (words[w] > scores[i].lvl) scores[i].lvl = words[w];
+        }
+      });
+      return scores;
+    });
+    var all = {}, phrase = fold(query).trim();
+    per.forEach(function (scores, ti) {
+      for (var i in scores) {
+        var a = all[i] || (all[i] = { n: 0, s: 0, words: [], weak: 0 });
+        a.n++; a.s += scores[i].s; a.words.push(scores[i].w);
+        if (scores[i].lvl < 2) a.weak++;
+      }
+    });
+    // Best: every word matched exactly, by its start, by sound or inside a word.
+    // Then: every word matched, some only with a typo. Last: some words matched.
+    var ids = Object.keys(all);
+    var full = ids.filter(function (i) { return all[i].n === terms.length; });
+    var strong = full.filter(function (i) { return !all[i].weak; });
+    var pick = strong.length ? strong : full.length ? full : ids;
+    var close = !strong.length;
+    var list = pick.map(function (i) {
+      var o = ORGS[i], a = all[i], s = a.s + a.n * 100;
+      if (fold(o.n).indexOf(phrase) >= 0) s += 60;
+      if (fold(o.n).indexOf(phrase) === 0) s += 30;
+      return { o: o, score: s, words: a.words };
+    }).filter(function (r) { return passes(r.o); });
+    list.sort(function (x, y) { return y.score - x.score || x.o.n.localeCompare(y.o.n); });
+    return { list: list, terms: terms, close: close };
+  }
+  // Where a record matched, for the "Matched in" line.
+  function whereMatched(o, words) {
+    var set = {};
+    words.forEach(function (w) { set[w] = 1; });
+    for (var f = 0; f < FIELDS.length; f++) {
+      var key = FIELDS[f][0];
+      if (key === "n") continue;
+      var texts = fieldText(o, key);
+      for (var t = 0; t < texts.length; t++) {
+        if (wordsOf(texts[t]).some(function (w) { return set[w]; })) {
+          return { label: FIELDS[f][1], text: key === "p" ? o.p[t] : texts[t] };
+        }
+      }
+    }
+    return null;
+  }
+  // Text with the matched words wrapped in <mark>, built from text nodes only.
+  function marked(text, words) {
+    var set = {}, span = el("span"), last = 0, m, re = /[A-Za-z0-9]+/g;
+    (words || []).forEach(function (w) { set[w] = 1; });
+    text = String(text || "");
+    while ((m = re.exec(text))) {
+      if (!set[fold(m[0])]) continue;
+      if (m.index > last) span.appendChild(document.createTextNode(text.slice(last, m.index)));
+      span.appendChild(el("mark", { text: m[0] }));
+      last = m.index + m[0].length;
+    }
+    if (last < text.length) span.appendChild(document.createTextNode(text.slice(last)));
+    return span;
+  }
+  function placeHits(terms) {
+    var hits = [];
+    var match = function (name) {
+      var ws = wordsOf(name);
+      return terms.every(function (t) {
+        return ws.some(function (w) { return w.indexOf(t) === 0 || pk(w) === pk(t) || (t.length >= 5 && lev(pk(w), pk(t), 1) <= 1); });
+      });
+    };
+    Object.keys(GEO).forEach(function (s) {
+      if (match(s)) hits.push({ label: s, go: function () { go({ state: s }); } });
+      GEO[s].forEach(function (d) {
+        if (match(d[0])) hits.push({ label: d[0] + ", " + s, go: function () { go({ state: s, district: d[0] }); } });
+      });
+    });
+    return hits.slice(0, 8);
   }
 
   // -------------------------------------------------------------- the map
@@ -415,18 +578,20 @@
   }
 
   function renderSearch() {
-    var scope = st.state ? { state: st.state, district: st.district } : null;
-    var list = [];
-    pool(scope).forEach(function (o) { var s = score(o); if (s) list.push([s, o]); });
-    list.sort(function (a, b) { return b[0] - a[0] || a[1].n.localeCompare(b[1].n); });
-    list = list.map(function (x) { return x[1]; });
-    var where = st.district ? dName(st.district) + ", " + sName(st.state) : st.state ? sName(st.state) : "India";
+    var r = search(st.q);
     var crumbs = [["India", function () { go({}); }]];
-    if (st.state) crumbs.push([sName(st.state), function () { go({ state: st.state }); }]);
-    setHeader(crumbs, "“" + st.q + "”".replace(/./, "”"), plural(list.length, "group") + " in " + where + ".");
-    $("title").textContent = "Results for " + st.q;
-    var extra = scope ? on(el("button", { cls: "pill", type: "button", text: "Search all of India" }), function () { go({ q: st.q }); }) : null;
-    results(list, null, !st.district, extra);
+    setHeader(crumbs, "Results for " + st.q, r.list.length
+      ? plural(r.list.length, "group") + (r.close ? " close to your search" : "") + " across India."
+      : "Nothing found yet.");
+    var places = placeHits(r.terms);
+    if (places.length) {
+      var chips = el("div", { cls: "places" }, [el("span", { cls: "muted", text: "Places" })]);
+      places.forEach(function (p) { chips.appendChild(on(el("button", { cls: "crumb", type: "button", text: p.label }), p.go)); });
+      view.appendChild(chips);
+    }
+    if (r.close && r.list.length) view.appendChild(el("p", { cls: "note", text: "No exact match, so these are the closest spellings." }));
+    r.list.forEach(function (x) { x.o._hit = x.words; });
+    results(r.list.map(function (x) { return x.o; }), null, true, null);
   }
 
   function results(list, heading, showDistrict, extra) {
@@ -438,7 +603,7 @@
     }
     if (!list.length) {
       var e = el("div", { cls: "empty card" }, [
-        el("div", { text: st.q ? "Nothing matches “".slice(0, 15) + st.q + "\"." : "No groups here with these filters." }),
+        el("div", { text: st.q ? "Nothing matches \"" + st.q + "\"." : "No groups here with these filters." }),
         el("div", { cls: "muted", text: "Try a town name, a short name like PFA, fewer words, or a different type." })
       ]);
       e.appendChild(on(el("button", { cls: "pill", type: "button", text: "Clear search and filters" }), resetAll));
@@ -493,8 +658,15 @@
         lead.r ? ", " + lead.r.charAt(0).toLowerCase() + lead.r.slice(1) : "",
         o.pp.length > 1 ? " +" + (o.pp.length - 1) + " more" : ""]);
     }
+    var words = st.q && o._hit ? o._hit : null;
+    var nameEl = el("div", { cls: "nm" }, [words ? marked(o.n, words) : o.n]);
+    var hitEl = null;
+    if (words && !wordsOf(o.n).some(function (w) { return words.indexOf(w) >= 0; })) {
+      var where = whereMatched(o, words);
+      if (where) hitEl = el("div", { cls: "hit" }, [el("span", { cls: "muted", text: "Matched in " + where.label.toLowerCase() + ": " }), marked(where.text, words)]);
+    }
     var head = el("button", { cls: "head", type: "button", "aria-expanded": "false", "aria-controls": id }, [
-      el("div", { cls: "body" }, [el("div", { cls: "nm", text: o.n }), alt ? el("div", { cls: "aka", text: "Also known as " + alt }) : null, meta, runby]),
+      el("div", { cls: "body" }, [nameEl, alt ? el("div", { cls: "aka", text: "Also known as " + alt }) : null, meta, runby, hitEl]),
       el("span", { cls: "plus", "aria-hidden": "true" }, [plusIcon()])
     ]);
     var detail = el("div", { cls: "detail", id: id });
@@ -601,9 +773,7 @@
     ORGS.forEach(function (o) {
       o.k = o.k || []; o.sr = o.sr || []; o.st = o.st || "Unknown";
       o.pp.sort(function (a, b) { return roleRank(a.r) - roleRank(b.r); });
-      o._i = [o.n].concat(o.k).map(initials).join(" ");
-      o._s = [o.n, o.k.join(" "), o.d, o.st, o.a, o.ad, o.ra, o.ac, o._i]
-        .concat(o.pp.map(function (p) { return p.n + " " + p.r; })).join(" ").toLowerCase();
+      o.p = o.p || []; o.e = o.e || []; o.s = o.s || []; o.nt = o.nt || []; o.src = o.src || [];
     });
 
     var foot = $("foot");

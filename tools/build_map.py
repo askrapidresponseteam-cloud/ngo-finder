@@ -25,6 +25,10 @@ NAMES = {
     "NCT of Delhi": "Delhi",
 }
 TOLERANCE = 0.025  # degrees, Douglas-Peucker
+# The source file's latitudes are compressed (Delhi comes out at 27.3 to 27.7
+# instead of 28.4 to 28.9). Fitted against the known extents of ten states:
+# true latitude = LAT_SCALE * file latitude + LAT_SHIFT (worst error 0.09 degree).
+LAT_SCALE, LAT_SHIFT = 1.0555, -0.3834
 
 
 def decode_arcs(topo):
@@ -37,7 +41,7 @@ def decode_arcs(topo):
         for dx, dy in arc:
             x += dx
             y += dy
-            pts.append((x * sx + tx, y * sy + ty))
+            pts.append((x * sx + tx, LAT_SCALE * (y * sy + ty) + LAT_SHIFT))
         arcs.append(pts)
     return arcs
 

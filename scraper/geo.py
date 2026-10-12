@@ -193,3 +193,76 @@ def pin_count(state, district):
 def pin_location(pin):
     hit = _tables()[0].get(str(pin))
     return (hit[2], hit[3]) if hit and hit[2] else ("", "")
+
+
+@lru_cache(maxsize=1)
+def _pin_grid():
+    grid = {}
+    for state, district, lat, lon in _tables()[0].values():
+        if lat and lon:
+            la, lo = float(lat), float(lon)
+            grid.setdefault((int(la), int(lo)), []).append((la, lo, state, district))
+    return grid
+
+
+@lru_cache(maxsize=1)
+def _shapes():
+    import json
+    try:
+        with open(os.path.join(HERE, "india_states_map.json"), encoding="utf-8") as fh:
+            return json.load(fh).get("states", {})
+    except (OSError, ValueError):
+        return {}
+
+
+def _inside(lat, lon, ring):
+    inside, n = False, len(ring) // 2
+    j = n - 1
+    for i in range(n):
+        xi, yi, xj, yj = ring[2 * i], ring[2 * i + 1], ring[2 * j], ring[2 * j + 1]
+        if (yi > lat) != (yj > lat) and lon < (xj - xi) * (lat - yi) / ((yj - yi) or 1e-12) + xi:
+            inside = not inside
+        j = i
+    return inside
+
+
+def state_at(lat, lon):
+    """States whose outline contains the point (Ladakh shares the Jammu and Kashmir
+    outline). Rings are combined even-odd, so holes count; if outlines overlap, the
+    smaller state wins (Delhi inside the rough edge of its neighbours)."""
+    hits = []
+    for name, rings in _shapes().items():
+        if sum(_inside(lat, lon, r) for r in rings) % 2:
+            xs = [v for r in rings for v in r[0::2]]
+            ys = [v for r in rings for v in r[1::2]]
+            hits.append(((max(xs) - min(xs)) * (max(ys) - min(ys)), name))
+    if not hits:
+        return set()
+    name = min(hits)[1]
+    return {name, "Ladakh"} if name == "Jammu and Kashmir" else {name}
+
+
+def nearest(lat, lon):
+    """(state, district) for a point: the state outline it falls in, and the
+    nearest PIN code location in that state. ('', '') outside India."""
+    try:
+        la, lo = float(lat), float(lon)
+    except (TypeError, ValueError):
+        return "", ""
+    allowed = state_at(la, lo)
+    grid, best = _pin_grid(), None
+    for i in (-1, 0, 1):
+        for j in (-1, 0, 1):
+            for p in grid.get((int(la) + i, int(lo) + j), []):
+                if allowed and p[2] not in allowed:
+                    continue
+                d = (p[0] - la) ** 2 + (p[1] - lo) ** 2
+                if best is None or d < best[0]:
+                    best = (d, p[2], p[3])
+    # Outside every outline: only accept a point right next to a PIN location (coast, islands).
+    if best is None or (not allowed and best[0] > 0.01) or best[0] > 1.0:
+        return "", ""
+    state, district = best[1], best[2]
+    if state == "Karnataka" and district not in ka.DISTRICTS:
+        district = ka.normalise(district) or ""
+    return state, district

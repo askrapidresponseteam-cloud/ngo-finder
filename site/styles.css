@@ -198,3 +198,10 @@ dd{margin:0;overflow-wrap:anywhere}
   dl{grid-template-columns:1fr;gap:2px}
   dd{margin-bottom:8px}
 }
+
+/* search */
+.places{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0 0 14px}
+.places .muted{font-size:13px;margin-right:4px}
+.note{color:var(--muted);font-size:13px;margin:0 0 12px}
+.hit{font-size:13px;margin-top:6px}
+mark{background:var(--hatch);color:inherit;border-radius:4px;padding:0 2px}

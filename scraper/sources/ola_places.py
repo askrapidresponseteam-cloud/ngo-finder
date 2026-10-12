@@ -49,14 +49,18 @@ ATTRIBUTION = "Ola Maps (data available under the Open Database License)"
 # Asked around each district centre.
 CENTRE_TERMS = ["animal trust", "animal shelter", "animal rescue", "animal welfare", "animal care",
                 "dog shelter", "stray", "gaushala", "goshala", "gau seva", "pinjrapole", "spca",
-                "people for animals", "wildlife rescue", "snake rescue", "cow shelter"]
+                "people for animals", "wildlife rescue", "snake rescue", "cow shelter",
+                "gowshala", "goushala", "gau shala", "panjrapole", "jeev daya", "jeevraksha", "pashu", "karuna",
+                "dog rescue", "cat rescue", "bird", "pet rescue", "animal hospital", "nandi", "kamdhenu",
+                "gopal goshala"]
 # Asked around each extra point inside a district.
-POINT_TERMS = ["animal", "gaushala", "rescue", "shelter"]
+POINT_TERMS = ["animal", "gaushala", "rescue", "shelter", "goshala", "dog", "cow", "jeev"]
 CENTRE_RADIUS = 40000  # metres
 POINT_RADIUS = 15000
 PINS_PER_POINT = 10    # one extra point per this many PIN codes in a district...
 MAX_POINTS = 8         # ...up to this many
 KA_PINS_PER_POINT, KA_MAX_POINTS = 6, 20
+CACHE_DAYS = 30        # a repeated search within this many days is answered from disk, free
 # Places named after a gaushala or shelter that are not one: stations, roads, gates, localities.
 NOT_A_GROUP = re.compile(
     r"\bstation\b|\bmetro\b|railway|bus ?(stop|stand|depot)|\bphatak\b|\bmarg\b|\broad\b|\brd\b|"
@@ -199,7 +203,29 @@ def parse_details(data):
 STRICT = {"on": True}  # keep results inside the radius; switched off if Ola rejects the option
 
 
+_CACHE = {}
+
+
+def _cache():
+    if "c" not in _CACHE:
+        from ..net import Cache
+        _CACHE["c"] = Cache(folder=os.path.join(os.path.expanduser("~/.cache/ka-ngo-scraper"), "ola"),
+                            max_age_days=CACHE_DAYS)
+    return _CACHE["c"]
+
+
 def search(http, key, term, usage, location="", radius=CENTRE_RADIUS):
+    """Autocomplete, answered from the 30-day disk cache when the same search was made before."""
+    ck = "ola|{}|{}|{}|{}".format(term, location, radius, STRICT["on"])
+    hit = _cache().get(ck)
+    if hit is not None:
+        return hit
+    items = _search(http, key, term, usage, location, radius)
+    _cache().put(ck, items)
+    return items
+
+
+def _search(http, key, term, usage, location="", radius=CENTRE_RADIUS):
     """Autocomplete: places whose name matches term, near location.
 
     Ola treats location as a hint and returns matches from anywhere in India,

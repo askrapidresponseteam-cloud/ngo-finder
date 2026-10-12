@@ -490,6 +490,9 @@ class TestOla(unittest.TestCase):
         self.ola = ola
         self.orig_usage = ola.USAGE_FILE
         ola.USAGE_FILE = os.path.join(tempfile.mkdtemp(), "ola-usage.json")
+        from scraper.net import Cache
+        ola._CACHE["c"] = Cache(enabled=False)
+        ola.STRICT["on"] = True
 
     def tearDown(self):
         self.ola.USAGE_FILE = self.orig_usage
@@ -518,7 +521,7 @@ class TestOla(unittest.TestCase):
         self.assertEqual(org.social, ["https://www.facebook.com/asareanimaltrust"])
 
     def test_sweep_filters_and_reads_details(self):
-        orgs, info = self.ola.sweep(self.http(), "KEY", cap=50, only=["Hassan"], log=lambda m: None, workers=1)
+        orgs, info = self.ola.sweep(self.http(), "KEY", cap=2000, only=["Hassan"], log=lambda m: None, workers=1)
         names = sorted(o.name for o in orgs)
         self.assertEqual(names, ["Asare Animal Trust", "CUPA - Compassion Unlimited Plus Action",
                                  "Hassan Stray Dog Shelter Trust"])
@@ -529,7 +532,7 @@ class TestOla(unittest.TestCase):
 
     def test_every_search_is_biased_to_its_district(self):
         http = self.http()
-        self.ola.sweep(http, "KEY", cap=50, only=["Hassan"], log=lambda m: None, workers=1, with_details=False)
+        self.ola.sweep(http, "KEY", cap=2000, only=["Hassan"], log=lambda m: None, workers=1, with_details=False)
         searches = [p for u, p in zip(http.calls, http.params) if "/autocomplete" in u]
         self.assertEqual(len(searches), len(self.ola.plan(only=["Hassan"])))
         lat, lon = __import__("scraper.geo", fromlist=["x"]).centre("Karnataka", "Hassan")
@@ -829,6 +832,13 @@ class TestGeo(unittest.TestCase):
         self.assertEqual(len(geo.districts_of("Karnataka")), 31)
         self.assertIn("Vijayanagara", geo.districts_of("Karnataka"))
         self.assertGreater(sum(len(geo.districts_of(s)) for s in geo.states()), 700)
+
+    def test_nearest_place_from_coordinates(self):
+        from scraper import geo
+        self.assertEqual(geo.nearest(12.9651, 74.8139), ("Karnataka", "Dakshina Kannada"))
+        self.assertEqual(geo.nearest(26.29, 73.02), ("Rajasthan", "Jodhpur"))
+        self.assertEqual(geo.nearest(27.70, 85.32), ("", ""), "Kathmandu is not in India")
+        self.assertEqual(geo.nearest("", ""), ("", ""))
 
     def test_every_district_alias_points_at_a_real_district(self):
         from scraper import geo
