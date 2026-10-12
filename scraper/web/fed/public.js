@@ -57,6 +57,21 @@ export async function attach() {
   return {
     verified,
 
+    // Contact details the team confirmed by phone or email (admin outreach log).
+    checked(box, o) {
+      B.contactsFor(o._id).then((c) => {
+        if (!c) return;
+        const day = /^(\d{4})-(\d{2})-(\d{2})$/.exec(c.checkedOn || "");
+        const when = day ? new Date(+day[1], +day[2] - 1, +day[3]).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "";
+        const acts = [];
+        (c.phones || []).forEach((p, i) => acts.push(el("a", { cls: "act" + (i === 0 && !o.p.length ? " primary" : ""), href: "tel:" + p.replace(/[^0-9+]/g, ""), text: "Call " + p })));
+        (c.emails || []).forEach((m) => acts.push(el("a", { cls: "act", href: "mailto:" + m, text: "Email " + m })));
+        if (/^https?:\/\//i.test(c.website || "")) acts.push(el("a", { cls: "act", href: c.website, target: "_blank", rel: "noopener", text: "Website" }));
+        if (!acts.length) return;
+        box.append(el("p", { cls: "checked", text: "Checked by the Rapid Response team" + (when ? " on " + when : "") + ":" }), el("div", { cls: "actions" }, acts));
+      }).catch(() => { /* none */ });
+    },
+
     // In a group's details, under its contacts: did the contacts work, and comments.
     feedback(box, o) {
       const gid = o._id;

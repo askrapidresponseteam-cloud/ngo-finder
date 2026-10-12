@@ -39,13 +39,13 @@
       '<h1 id="title">Animal NGOs of India</h1><div class="muted" id="sub">Loading the directory...</div></div></section>' +
       '<header class="top"><div class="finderslot" id="finderSlot"></div>' +
       '<label class="searchbox" id="searchbox"><svg class="icon"><use href="#i-search"/></svg>' +
-      '<input id="q" type="search" autocomplete="off" placeholder="Group, person or town" aria-label="Search groups, people or towns">' +
+      '<input id="q" type="search" autocomplete="off" placeholder="Search by name, person or town" aria-label="Search by name, person or town">' +
       '<button class="clear" id="clear" type="button" aria-label="Clear search"><svg class="icon"><use href="#i-x"/></svg></button></label></header>' +
       '<div class="subbar"><nav class="types" id="types" aria-label="Type of group"></nav>' +
       '<div class="tools"><button class="round" id="filterBtn" type="button" aria-label="Filters" aria-expanded="false" aria-controls="filters">' +
-      '<svg class="icon"><use href="#i-filter"/></svg><span class="dot" id="filterDot"></span></button>' +
+      '<svg class="icon"><use href="#i-filter"/></svg><span class="tl">Filters</span><span class="dot" id="filterDot"></span></button>' +
       '<button class="pill blue" id="share" type="button" aria-label="Copy link"><svg class="icon"><use href="#i-link"/></svg><span class="tl">Copy link</span></button>' +
-      '<button class="pill" id="csv" type="button" aria-label="Download CSV"><svg class="icon"><use href="#i-download"/></svg><span class="tl">Download CSV</span></button></div></div>' +
+      '<button class="pill" id="csv" type="button" aria-label="Download CSV"><svg class="icon"><use href="#i-download"/></svg><span class="tl">Download list</span></button></div></div>' +
       '<div class="filters card" id="filters" hidden>' +
       '<label><input type="checkbox" id="fContact"> Has a phone or email</label>' +
       '<label><input type="checkbox" id="fPeople"> We know who runs it</label>' +
@@ -946,6 +946,9 @@
         act("Website", o.w), o.s[0] ? act(socialName(o.s[0]), o.s[0]) : null]);
     }
     d.appendChild(acts);
+    var checkedBox = el("div", { cls: "checkedbox" });
+    d.appendChild(checkedBox);
+    if (FED && FED.checked) FED.checked(checkedBox, o);
     if (o.ad || o.ra) d.appendChild(el("p", { cls: "addr", text: o.ad || o.ra }));
     var said = el("div", { cls: "said" });
     d.appendChild(said);

@@ -28,6 +28,7 @@ export async function backend() {
 // Everything lives under ngo/dir/ in Rapid Response's Firebase project, apart
 // from the app's own data (see firestore.rules).
 const ROOT = "ngo/dir/";
+const OWNER = "narenkumar19706@gmail.com";  // as in firestore.rules
 function col(name) { return fb.collection(db, ROOT + name); }
 function ref(p) { return fb.doc(db, ROOT + p); }
 function now() { return fb.serverTimestamp(); }
@@ -265,6 +266,51 @@ const api = {
   async moderate(c, status, note) {
     await fb.updateDoc(ref("comments/" + c.id), { status, modBy: auth.currentUser.uid, modAt: now(), modNote: note || "" });
   },
+
+  // ------------------------------------------------------------ outreach log (admins only)
+  async outreachAll() {
+    return snapList(await fb.getDocs(fb.query(col("outreach"), fb.orderBy("createdAt", "desc"), fb.limit(5000))));
+  },
+  // rec: gid, gname, state, district, person, method, when, response, phone, email, website, comments.
+  // Each save bumps the revision and writes its own audit entry in the same batch.
+  async saveOutreach(rec, existing) {
+    const u = auth.currentUser, b = fb.writeBatch(db), mail = (u.email || "").toLowerCase();
+    const id = existing ? existing.id : fb.doc(col("outreach")).id;
+    const rev = existing ? (existing.rev || 0) + 1 : 0;
+    const who = existing ? { createdBy: existing.createdBy, createdByEmail: existing.createdByEmail, createdAt: existing.createdAt }
+      : { createdBy: u.uid, createdByEmail: mail, createdAt: now() };
+    b.set(ref("outreach/" + id), Object.assign({}, rec, who, { rev, updatedBy: u.uid, updatedAt: now() }));
+    b.set(ref("audit/outreach_" + id + "_" + rev + "_" + u.uid), { by: u.uid, email: mail, action: existing ? "outreach edited" : "outreach",
+      target: id, note: (rec.gname + ": " + rec.method + ", " + rec.response).slice(0, 1900), at: now() });
+    await b.commit();
+    return id;
+  },
+  async deleteOutreach(r) {
+    const u = auth.currentUser, b = fb.writeBatch(db);
+    b.delete(ref("outreach/" + r.id));
+    b.set(ref("audit/outreach_" + r.id + "_" + ((r.rev || 0) + 1) + "_" + u.uid), { by: u.uid, email: (u.email || "").toLowerCase(),
+      action: "outreach deleted", target: r.id, note: (r.gname + " on " + r.when).slice(0, 1900), at: now() });
+    await b.commit();
+  },
+  // Contact details an admin confirmed: public, shown in the directory.
+  async contactsFor(gid) {
+    const s = await fb.getDoc(ref("contacts/" + gid));
+    return s.exists() ? Object.assign({ id: gid }, s.data()) : null;
+  },
+  async saveContacts(o, c, checkedOn) {
+    await fb.setDoc(ref("contacts/" + o.gid), { name: o.name, state: o.state, district: o.district,
+      phones: c.phones.slice(0, 3), emails: c.emails.slice(0, 3), website: c.website || "", checkedOn,
+      updatedBy: auth.currentUser.uid, updatedAt: now() });
+  },
+  // The admin list (the owner manages it).
+  async adminList() {
+    const s = await fb.getDoc(ref("config/admins"));
+    return s.exists() ? (s.data().emails || []) : [];
+  },
+  async setAdminList(emails) {
+    await fb.setDoc(ref("config/admins"), { emails, updatedAt: now() });
+  },
+  isOwner() { return ((auth.currentUser && auth.currentUser.email) || "").toLowerCase() === OWNER; },
 
   async auditLog() {
     return snapList(await fb.getDocs(fb.query(col("audit"), fb.orderBy("at", "desc"), fb.limit(200))));

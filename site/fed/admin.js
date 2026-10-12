@@ -1,6 +1,8 @@
-// Admin console: review applications (documents, vouch, visit), handle reports,
-// appoint coordinators, read the audit log. The rules refuse anything that skips a step.
+// Admin console: log outreach to NGOs, review applications (documents, vouch, visit),
+// approve comments, handle reports, appoint coordinators and admins, read the audit log.
+// The rules refuse anything that skips a step.
 import { backend } from "./api.js";
+import { outreachTab } from "./outreach.js";
 import { $, el, clear, toast, errText, expander, field, select, STATUS_LABEL, REPORT_REASONS, fmtDate, directory, fold } from "./common.js";
 import { appSummary, proofList } from "./shared.js";
 
@@ -12,36 +14,88 @@ function setSub(t) { $("sub").textContent = t; }
 
 async function start() {
   try { B = await backend(); } catch (e) { B = null; }
-  if (!B) { clear(view).appendChild(card([el("p", { text: "The federation backend is not set up yet." })])); return; }
-  try { await B.finishLink(); } catch (e) { /* ignore */ }
+  if (!B) { clear(view).appendChild(card([el("p", { text: "The admin page is not set up yet." })])); return; }
+  try { await B.finishLink(); } catch (e) { /* not a sign-in link */ }
   B.onUser(async (u) => {
     user = u;
     const w = clear($("who"));
     if (!u) return signIn();
-    w.appendChild(el("span", { cls: "muted", text: u.email || "" }));
-    w.appendChild(el("button", { cls: "pill", type: "button", text: "Sign out", on: { click: () => B.signOut() } }));
+    w.appendChild(el("span", { cls: "muted", text: "Signed in as " + (u.email || "") }));
+    w.appendChild(el("button", { cls: "obig", type: "button", text: "Sign out", on: { click: () => B.signOut() } }));
+    clear(view).appendChild(el("p", { cls: "ohint", text: "Checking your access..." }));
     const r = await B.roles().catch(() => ({}));
-    if (!r.admin) { clear(view).appendChild(card([el("p", { text: "This account is not an admin." })])); return; }
+    if (!r.admin) {
+      clear(view).appendChild(card([el("h2", { cls: "otitle", text: "This account is not an admin" }),
+        el("p", { text: (u.email || "This account") + " cannot open the admin page. Ask the owner to add this email in the Admins tab, then sign in again." })]));
+      return;
+    }
     DIR = await directory().catch(() => null);
     tabs();
   });
 }
 
+// Sign in once: Google, or a link sent by email (no passwords, no codes).
 function signIn() {
-  const google = el("button", { cls: "pill blue", type: "button", text: "Continue with Google", on: { click: () => B.signInGoogle().catch((e) => toast(errText(e))) } });
-  clear(view).appendChild(card([el("div", { cls: "label", text: "Admins only" }), el("div", { cls: "row-actions" }, [google])]));
+  $("sub").textContent = "Sign in to log outreach and look after the directory.";
+  const google = el("button", { cls: "obig primary", type: "button", text: "Sign in with Google",
+    on: { click: () => B.signInGoogle().catch((e) => toast(errText(e))) } });
+  const mail = el("input", { type: "email", id: "amail", autocomplete: "email", placeholder: "name@example.org" });
+  const send = el("button", { cls: "obig", type: "button", text: "Email me a sign-in link", on: { click: async () => {
+    const v = mail.value.trim();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)) { toast("Enter your email address."); mail.focus(); return; }
+    try { await B.sendLink(v); clear(box).appendChild(el("p", { cls: "obigtext", text: "Done. Open the email we sent to " + v + " and tap the link in it. You can close this page." })); }
+    catch (e) { toast(errText(e)); }
+  } } });
+  const box = card([el("h2", { cls: "otitle", text: "Admin sign in" }), el("div", { cls: "oactions" }, [google]),
+    el("p", { cls: "or", text: "or, without Google:" }),
+    el("div", { cls: "ofield" }, [el("label", { cls: "olabel", for: "amail", text: "Your email" }), mail]),
+    el("div", { cls: "oactions" }, [send])], "ostep");
+  clear(view).appendChild(box);
 }
 
 function tabs() {
-  const parts = [["queue", "Applications", queue], ["comments", "Comments", comments], ["reports", "Reports", reports], ["coord", "Coordinators", coordinators], ["audit", "Audit log", audit]];
-  const bar = el("nav", { cls: "types tabs" }), body = el("div");
+  const parts = [["outreach", "Outreach", (b) => outreachTab(b, { B, DIR, setSub })], ["queue", "Applications", queue],
+    ["comments", "Comments", comments], ["reports", "Reports", reports], ["coord", "Coordinators", coordinators]];
+  if (B.isOwner()) parts.push(["admins", "Admins", admins]);
+  parts.push(["audit", "Audit log", audit]);
+  const bar = el("nav", { cls: "otabs", "aria-label": "Admin sections" }), body = el("div");
   const show = (k) => {
-    Array.from(bar.children).forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.k === k)));
+    Array.from(bar.children).forEach((b) => b.setAttribute("aria-current", b.dataset.k === k ? "page" : "false"));
     clear(body);
-    Promise.resolve(parts.find((p) => p[0] === k)[2](body)).catch((e) => toast(errText(e)));
+    Promise.resolve(parts.find((p) => p[0] === k)[2](body)).catch((e) => body.appendChild(el("p", { cls: "oerrors", text: errText(e) })));
   };
-  parts.forEach(([k, l]) => bar.appendChild(el("button", { cls: "pill", type: "button", "data-k": k, text: l, on: { click: () => show(k) } })));
-  clear(view); view.appendChild(bar); view.appendChild(body); show("queue");
+  parts.forEach(([k, l]) => bar.appendChild(el("button", { cls: "otab", type: "button", "data-k": k, text: l, on: { click: () => show(k) } })));
+  clear(view); view.appendChild(bar); view.appendChild(body); show("outreach");
+}
+
+// ------------------------------------------------------------------ admins (owner only)
+async function admins(body) {
+  let list = await B.adminList();
+  setSub("People who can open this page.");
+  const ul = el("ul", { cls: "olist" });
+  const mail = el("input", { type: "email", id: "newadmin", placeholder: "name@example.org" });
+  const draw = () => {
+    clear(ul);
+    ul.appendChild(el("li", null, [el("span", { text: "You (the owner)" })]));
+    list.forEach((m) => ul.appendChild(el("li", null, [el("span", { text: m }),
+      el("button", { cls: "osmall danger", type: "button", text: "Remove", on: { click: async () => {
+        if (!confirm("Remove " + m + " as an admin?")) return;
+        const next = list.filter((x) => x !== m);
+        try { await B.setAdminList(next); list = next; toast("Removed."); draw(); } catch (e) { toast(errText(e)); }
+      } } })])));
+  };
+  const add = el("button", { cls: "obig primary", type: "button", text: "Add admin", on: { click: async () => {
+    const v = mail.value.trim().toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)) { toast("Enter an email address."); return; }
+    if (list.includes(v)) { toast("Already an admin."); return; }
+    const next = list.concat([v]);
+    try { await B.setAdminList(next); list = next; mail.value = ""; toast("Added. They can sign in now."); draw(); } catch (e) { toast(errText(e)); }
+  } } });
+  body.appendChild(card([el("h2", { cls: "otitle", text: "Admins" }),
+    el("p", { cls: "ohint", text: "Rapid Response super admins can always sign in here too." }), ul,
+    el("div", { cls: "ofield" }, [el("label", { cls: "olabel", for: "newadmin", text: "Add an admin by email" }), mail]),
+    el("div", { cls: "oactions" }, [add])], "ostep"));
+  draw();
 }
 
 // ------------------------------------------------------------------ applications

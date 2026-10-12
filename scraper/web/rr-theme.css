@@ -201,3 +201,143 @@ mark{background:var(--wash);border-radius:0}
 .comment{border-radius:0;background:var(--bg);font-size:14px}
 .cmeta{font:500 11px/1.4 var(--mono);letter-spacing:.06em;text-transform:uppercase}
 .more-toggle{margin-top:4px}
+
+/* ---------------------------------------------------------------- readable for everyone
+   Larger text, labels in plain sentence case (not small capitals), and every
+   button at least 48 px tall, so the directory is easy to read and tap for
+   older people and anyone new to the web. */
+:root{font-size:17px;line-height:1.55}
+.viewnav button{font:600 15px/1 var(--sans);letter-spacing:0;text-transform:none;padding:14px 0 12px}
+.eyebrow{font-size:13px}
+#sub{font-size:18px}
+.crumb{height:44px;font:600 15px/1 var(--sans);letter-spacing:0;text-transform:none;padding:0 14px}
+.pill{height:48px;font:600 16px/1 var(--sans)}
+.pill.blue,.item.open .pill.blue,.card .pill.blue,.tools .pill:not(.blue){height:52px;font:700 15px/1 var(--sans);letter-spacing:0;text-transform:none}
+.round{width:52px;height:52px}
+.searchbox{height:56px}
+.searchbox input{font-size:17px}
+.finder select{height:52px;font:600 16px/1 var(--sans)}
+.pill.dark{height:52px;font:700 15px/1 var(--sans);letter-spacing:.02em;text-transform:none}
+.filters{font-size:16px;gap:12px 26px;padding:18px 22px}
+.filters label{min-height:44px}
+.filters input{width:22px;height:22px}
+.label{font:700 14px/1.3 var(--sans);letter-spacing:0;text-transform:none;color:var(--graphite)}
+.caption{font-size:15px}
+.badge{font:700 13px/1 var(--sans);letter-spacing:0;text-transform:none}
+.headline small{font:600 13px/1.3 var(--sans);letter-spacing:0;text-transform:none}
+.maptip{font:600 14px/1.3 var(--sans);letter-spacing:0;text-transform:none}
+.barcol small{font-size:13px}
+.barbadge{font:700 13px/1 var(--sans)}
+.stat{font-size:15px}
+.rank{font-size:16px;padding:9px 0}
+.rank .r,.rank .pc{font:600 13px/1 var(--sans)}
+.more-toggle{font:700 15px/1 var(--sans);letter-spacing:0;text-transform:none;min-height:44px}
+.resultbar .muted{font:600 15px/1.3 var(--sans);letter-spacing:0;text-transform:none}
+.head .nm{font-size:20px}
+.aka,.meta{font-size:15px}
+.chip{font:700 13px/1 var(--sans);letter-spacing:0;text-transform:none;padding:6px 9px}
+.runby{font-size:16px}
+.hit{font-size:15px}
+a.act{height:50px;font:700 15px/1 var(--sans);letter-spacing:0;text-transform:none;padding:0 18px}
+.qc{height:46px;font:600 16px/1 var(--sans);padding:0 14px}
+.sec,dt{font:700 15px/1.5 var(--sans);letter-spacing:0;text-transform:none;color:var(--graphite)}
+dl{font-size:16px}
+.addr,.fbq,.note{font-size:16px}
+.fbask .pill{height:48px;font:700 15px/1 var(--sans);letter-spacing:0;text-transform:none}
+.fbtally,.cmeta{font:600 14px/1.4 var(--sans);letter-spacing:0;text-transform:none}
+.comment{font-size:16px}
+.toast{font-size:16px;padding:14px 26px}
+@media (max-width:650px){
+  .subbar{flex-wrap:wrap}
+  .subbar .types{flex:1 1 100%}
+  .tools{flex:1 1 100%}
+  .tools .tl{display:inline}
+  .tools .round,.tools .pill,.tools .pill.blue{width:auto;flex:1 1 0;height:52px;padding:0 10px;gap:6px}
+  .head .nm{font-size:19px}
+}
+
+/* ---------------------------------------------------------------- admin and group pages */
+.opage{padding:20px clamp(16px,4vw,48px) 64px;max-width:1320px;margin:0 auto}
+.opage .eyebar{padding:6px 0}
+.oback{font:700 16px/1 var(--sans);color:var(--ink);text-decoration:underline;padding:14px 0;display:inline-block}
+.who{display:flex;gap:12px;align-items:center;flex-wrap:wrap;font-size:15px}
+.otabs{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 22px}
+.otab{min-height:52px;padding:0 20px;border:1.5px solid var(--line2);background:var(--white);font:700 16px/1 var(--sans);color:var(--ink);cursor:pointer}
+.otab:hover{border-color:var(--ink)}
+.otab[aria-current="page"]{background:var(--ink);color:var(--white);border-color:var(--ink)}
+.ostep{padding:26px;margin:0 0 22px}
+.ostep.off{opacity:.5}
+.otitle{font:800 25px/1.2 var(--disp);letter-spacing:-.01em;margin:0 0 18px}
+.ofield{display:grid;gap:7px;margin:0 0 20px}
+.olabel{font:700 17px/1.3 var(--sans);color:var(--ink)}
+.ohint{font-size:15px;color:var(--graphite);line-height:1.45}
+.ostep .ofield input:not([type=checkbox]):not([type=radio]),.ostep .ofield select,.ostep .ofield textarea{font:500 17px/1.4 var(--sans);height:auto;min-height:54px;border:1.5px solid var(--line2);border-radius:0;padding:12px 14px;background:var(--white);width:100%;color:var(--ink)}
+.ostep .ofield input:not([type=checkbox]):not([type=radio]):focus,.ostep .ofield select:focus,.ostep .ofield textarea:focus{border-color:var(--ink);box-shadow:0 0 0 2px var(--ink);outline:none}
+.ochoice{border:0;padding:0;margin:0 0 20px;display:flex;flex-wrap:wrap;gap:10px}
+.ochoice legend{margin:0 0 9px;padding:0;width:100%}
+.otile{display:flex;align-items:center;gap:12px;min-height:58px;padding:0 20px;border:1.5px solid var(--line2);background:var(--white);font:600 17px/1.2 var(--sans);cursor:pointer;color:var(--ink)}
+.otile input{width:24px;height:24px;margin:0;accent-color:var(--ink)}
+.otile:has(input:checked){border-color:var(--ink);box-shadow:inset 0 0 0 1.5px var(--ink);background:var(--bg)}
+.otile:has(input:focus-visible){outline:2px solid var(--ink);outline-offset:2px}
+.ogrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0 16px}
+.ocheck{display:flex;gap:12px;align-items:center;font:600 16px/1.35 var(--sans);margin:0 0 20px;cursor:pointer;min-height:48px}
+.ocheck input{width:24px;height:24px;accent-color:var(--ink);flex-shrink:0}
+.oactions{display:flex;flex-wrap:wrap;gap:10px;margin:4px 0 0}
+.obig{min-height:54px;padding:0 24px;border:1.5px solid var(--ink);background:var(--white);color:var(--ink);font:700 16px/1.2 var(--sans);cursor:pointer}
+.obig:hover{background:var(--bg)}
+.obig.primary{background:var(--red);border-color:var(--red);color:var(--white)}
+.obig.primary:hover{background:var(--red2);border-color:var(--red2)}
+.obig[disabled]{opacity:.5;cursor:not-allowed}
+.oerrors:not(:empty){background:var(--sg-stop-bg,#FDECEC);color:var(--sg-stop-text,#A2131B);padding:14px 18px;font:600 16px/1.45 var(--sans);margin:0 0 16px}
+.oerrors ul,.oerrors p{margin:0}
+.oerrors ul{padding-left:20px}
+.opicks{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.opick{width:100%;text-align:left;padding:14px 18px;border:1.5px solid var(--line2);background:var(--white);display:grid;gap:4px;min-height:60px;cursor:pointer}
+.opick:hover,.opick:focus-visible{border-color:var(--ink)}
+.oname{font:700 17px/1.3 var(--sans);color:var(--ink)}
+.oplace{font-size:15px;color:var(--graphite)}
+.ochosen{display:grid;gap:8px;padding:18px;background:var(--bg);border-left:4px solid var(--ink);justify-items:start}
+.osub{margin:6px 0 12px}
+.otools{display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:0 14px;align-items:end}
+.otools .obig{margin-bottom:20px}
+.ocount{font-size:16px;color:var(--graphite);margin:0 0 10px}
+.otablewrap{overflow-x:auto;border:1px solid var(--line)}
+.otable{width:100%;border-collapse:collapse;font-size:16px}
+.otable th{text-align:left;font:700 15px/1.3 var(--sans);background:var(--bg);padding:12px;border-bottom:1.5px solid var(--line2);white-space:nowrap;color:var(--ink)}
+.otable td{padding:12px;border-bottom:1px solid var(--line);vertical-align:top}
+.otable tbody tr:nth-child(even){background:#FAFAF9}
+.osort{background:none;padding:0;font:inherit;color:var(--ink);text-decoration:underline;cursor:pointer;min-height:32px}
+.ocomm{max-width:340px;white-space:pre-wrap}
+.oresp{display:inline-block;padding:5px 10px;font:700 14px/1.3 var(--sans)}
+.oresp.yes{background:var(--sg-go-bg,#E6F5ED);color:var(--sg-go-text,#0C7B46)}
+.oresp.no{background:var(--bg);color:var(--graphite)}
+.oresp.wrong{background:var(--sg-stop-bg,#FDECEC);color:var(--sg-stop-text,#A2131B)}
+.orow-actions{white-space:nowrap}
+.osmall{min-height:46px;padding:0 16px;border:1.5px solid var(--line2);background:var(--white);font:700 15px/1 var(--sans);margin:0 6px 6px 0;cursor:pointer;color:var(--ink)}
+.osmall:hover{border-color:var(--ink)}
+.osmall.danger{color:var(--sg-stop-text,#A2131B)}
+.olist{list-style:none;padding:0;margin:0 0 20px;display:grid;gap:8px}
+.olist li{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 16px;border:1px solid var(--line);font-size:17px;min-height:60px}
+.obigtext{font-size:18px;line-height:1.5}
+.opage .or{font-size:16px;margin:16px 0 10px}
+@media (max-width:760px){
+  .ogrid,.otools{grid-template-columns:1fr}
+  .ostep{padding:18px}
+  .otablewrap{border:0}
+  .otable thead{display:none}
+  .otable,.otable tbody,.otable tr,.otable td{display:block;width:100%}
+  .otable tr{border:1px solid var(--line2);margin:0 0 12px;padding:8px 0;background:var(--white)!important}
+  .otable td{border:0;padding:6px 14px;display:grid;grid-template-columns:120px 1fr;gap:10px}
+  .otable td::before{content:attr(data-label);font-weight:700;color:var(--graphite)}
+  .otable td.orow-actions{display:flex;gap:8px}
+  .otable td.orow-actions::before{content:none}
+  .ocomm{max-width:none}
+}
+.tools .round{width:auto;padding:0 16px;gap:8px;font:700 15px/1 var(--sans);color:var(--ink)}
+.checked{font:700 15px/1.4 var(--sans);color:var(--sg-go-text,#0C7B46);margin:4px 0 8px}
+.oresp{white-space:nowrap;justify-self:start}
+.comments .none{font-size:16px}
+@media (max-width:650px){
+  .tools{flex-wrap:wrap;gap:8px}
+  .tools .round,.tools .pill,.tools .pill.blue{flex:1 1 auto;min-width:0}
+}

@@ -47,6 +47,16 @@ const store = {
     "awbi-ka064-2014_zed": { gid: "awbi-ka064-2014", gname: "Amruthadhara Gaushala", state: "Karnataka", district: "Udupi",
       uid: "zed", name: "Zed", text: "The number on the AWBI list is old.", contact: "+91 90000 11111", status: "pending", at: now() }
   },
+  outreach: {
+    o1: { gid: "awbi-ka004-1993", gname: "Compassion Unlimited Plus Action", state: "Karnataka", district: "Bengaluru Urban",
+      person: "Front desk", method: "phone", when: "2026-10-10", response: "yes", phone: "+91 98454 25678", email: "", website: "",
+      comments: "Confirmed the 24 hour rescue line.", rev: 0, createdBy: "owner", createdByEmail: "owner@example.org", createdAt: T(Date.now() - 864e5 * 2), updatedAt: T(Date.now() - 864e5 * 2) },
+    o2: { gid: "awbi-ka064-2014", gname: "Amruthadhara Gaushala", state: "Karnataka", district: "Udupi",
+      person: "", method: "email", when: "2026-10-11", response: "no", phone: "", email: "", website: "",
+      comments: "Sent the claim invite, no reply yet.", rev: 0, createdBy: "owner", createdByEmail: "owner@example.org", createdAt: T(Date.now() - 864e5), updatedAt: T(Date.now() - 864e5) }
+  },
+  contacts: {},
+  admins: ["admin2@example.org"],
   audit: [],
   public: { verified: { "awbi-ka004-1993": { n: "Compassion Unlimited Plus Action" } } }
 };
@@ -110,5 +120,19 @@ export const mock = {
   async comment(o, text, contact) { store.comments[o.gid + "_" + user.uid] = { gid: o.gid, gname: o.name, state: o.state, district: o.district, uid: user.uid, name: "Alice", text, contact, status: "pending", at: now() }; },
   async pendingComments() { return list(store.comments).filter((c) => c.status === "pending"); },
   async moderate(c, status, note) { Object.assign(store.comments[c.id], { status, modBy: user.uid, modAt: now(), modNote: note }); },
+  async outreachAll() { return list(store.outreach).sort((a, b) => b.createdAt.toMillis() - a.createdAt.toMillis()); },
+  async saveOutreach(rec, existing) {
+    const id = existing ? existing.id : "o" + Date.now();
+    const old = existing ? store.outreach[id] : null;
+    store.outreach[id] = Object.assign({}, rec, old ? { createdBy: old.createdBy, createdByEmail: old.createdByEmail, createdAt: old.createdAt }
+      : { createdBy: user.uid, createdByEmail: user.email, createdAt: now() }, { rev: old ? old.rev + 1 : 0, updatedBy: user.uid, updatedAt: now() });
+    log(existing ? "outreach edited" : "outreach", id, rec.gname); return id;
+  },
+  async deleteOutreach(r) { delete store.outreach[r.id]; log("outreach deleted", r.id, r.gname); },
+  async contactsFor(gid) { return store.contacts[gid] ? Object.assign({ id: gid }, store.contacts[gid]) : null; },
+  async saveContacts(o, c, checkedOn) { store.contacts[o.gid] = { name: o.name, state: o.state, district: o.district, phones: c.phones, emails: c.emails, website: c.website, checkedOn, updatedAt: now() }; },
+  async adminList() { return store.admins.slice(); },
+  async setAdminList(emails) { store.admins = emails.slice(); },
+  isOwner() { return who === "admin"; },
   async auditLog() { return store.audit; }
 };

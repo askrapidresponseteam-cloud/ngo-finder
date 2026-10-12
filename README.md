@@ -99,6 +99,18 @@ On every group, under its contacts:
   email; never SMS) so every answer is one real person; their email is never
   shown.
 
+**Admin page** (rapid-response.in/ngos-admin, or admin.html): sign in with
+Google or an emailed link. The Outreach tab is the daily tool: type an NGO's
+name or town, tap it, then answer one question at a time (contact person,
+how you contacted them, date, whether they responded, their phone, email and
+website, comments) and Save. Confirmed contact details can be shown on the
+public directory as "Checked by the Rapid Response team on <date>". Every
+record is in a searchable table (filter by response or method, sort by date or
+name, download as a spreadsheet), can be edited or deleted, and every save
+writes its own audit entry. Records are visible to admins only. The owner adds
+or removes admins in the Admins tab; Rapid Response super admins are admins
+automatically.
+
 How a group gets the Verified badge (enforced by `firestore.rules`, not just
 the pages):
 1. It signs in and claims its listing or asks to be listed, with registration

@@ -501,3 +501,75 @@ test("Rapid Response super admins can moderate; other RRT admins and suspended o
   await assertFails(mod("mo", "mo@example.org"));
   await assertSucceeds(mod("sam", "sam@example.org"));
 });
+
+// ------------------------------------------------------------- outreach log
+const outreach = (over = {}) => Object.assign({
+  gid: "awbi-ka004-1993", gname: "Compassion Unlimited Plus Action", state: "Karnataka", district: "Bengaluru Urban",
+  person: "Front desk", method: "phone", when: "2026-10-12", response: "yes", phone: "+91 98454 25678", email: "",
+  website: "", comments: "Picked up, confirmed the rescue line.", rev: 0, createdBy: "admin2", createdByEmail: "admin2@example.org",
+  createdAt: serverTimestamp(), updatedBy: "admin2", updatedAt: serverTimestamp()
+}, over);
+const auditFor = (id, rev, uid, mail, action) => [doc, "audit/outreach_" + id + "_" + rev + "_" + uid,
+  { by: uid, email: mail, action, target: id, note: "", at: serverTimestamp() }];
+
+async function logBatch(db, id, data, rev, uid, mail, action, del = false) {
+  const b = writeBatch(db);
+  if (del) b.delete(doc(db, "outreach/" + id)); else if (rev === 0) b.set(doc(db, "outreach/" + id), data); else b.set(doc(db, "outreach/" + id), data);
+  const [, path, a] = auditFor(id, rev, uid, mail, action);
+  b.set(doc(db, path), a);
+  return b.commit();
+}
+
+test("an admin logs outreach with an audit entry; nobody else can read or write it", async () => {
+  await seedPeople();
+  await assertSucceeds(logBatch(admin2(), "o1", outreach(), 0, "admin2", "admin2@example.org", "outreach"));
+  await assertSucceeds(getDoc(doc(admin2(), "outreach/o1")));
+  await assertSucceeds(getDocs(collection(owner(), "outreach")));
+  await assertFails(getDoc(doc(stranger(), "outreach/o1")));
+  await assertFails(getDoc(doc(anon(), "outreach/o1")));
+  await assertFails(getDoc(doc(coordUdupi(), "outreach/o1")));
+  await assertFails(logBatch(stranger(), "o2", outreach({ createdBy: "eve", createdByEmail: "eve@example.org", updatedBy: "eve" }), 0, "eve", "eve@example.org", "outreach"));
+});
+
+test("an outreach record needs its audit entry and known values", async () => {
+  await seedPeople();
+  await assertFails(setDoc(doc(admin2(), "outreach/o1"), outreach()));  // no audit entry
+  await assertFails(logBatch(admin2(), "o1", outreach({ method: "pigeon" }), 0, "admin2", "admin2@example.org", "outreach"));
+  await assertFails(logBatch(admin2(), "o1", outreach({ response: "maybe" }), 0, "admin2", "admin2@example.org", "outreach"));
+  await assertFails(logBatch(admin2(), "o1", outreach({ when: "12/10/2026" }), 0, "admin2", "admin2@example.org", "outreach"));
+  await assertFails(logBatch(admin2(), "o1", outreach({ createdBy: "owner" }), 0, "admin2", "admin2@example.org", "outreach"));
+  await assertFails(logBatch(admin2(), "o1", outreach({ extra: 1 }), 0, "admin2", "admin2@example.org", "outreach"));
+});
+
+test("an edit bumps the revision and keeps who created it; a delete is audited too", async () => {
+  await seedPeople();
+  await logBatch(admin2(), "o1", outreach(), 0, "admin2", "admin2@example.org", "outreach");
+  await assertFails(logBatch(owner(), "o1", outreach({ rev: 1, createdBy: "owner", updatedBy: "owner" }), 1, "owner", OWNER, "outreach edited"));
+  await assertFails(logBatch(owner(), "o1", outreach({ rev: 3, updatedBy: "owner" }), 3, "owner", OWNER, "outreach edited"));
+  await assertSucceeds(logBatch(owner(), "o1", outreach({ rev: 1, response: "no", updatedBy: "owner" }), 1, "owner", OWNER, "outreach edited"));
+  await assertFails(deleteDoc(doc(owner(), "outreach/o1")));
+  await assertSucceeds(logBatch(owner(), "o1", null, 2, "owner", OWNER, "outreach deleted", true));
+});
+
+// ------------------------------------------------------------- contacts checked by the team
+const contact = (over = {}) => Object.assign({ name: "Compassion Unlimited Plus Action", state: "Karnataka", district: "Bengaluru Urban",
+  phones: ["+91 98454 25678"], emails: ["cupablr@cupaindia.org"], website: "https://cupabangalore.org/", checkedOn: "2026-10-12",
+  updatedBy: "admin2", updatedAt: serverTimestamp() }, over);
+
+test("admins publish checked contacts; everyone can read them; no money details", async () => {
+  await seedPeople();
+  await assertSucceeds(setDoc(doc(admin2(), "contacts/awbi-ka004-1993"), contact()));
+  await assertSucceeds(getDoc(doc(anon(), "contacts/awbi-ka004-1993")));
+  await assertFails(setDoc(doc(stranger(), "contacts/awbi-ka004-1993"), contact({ updatedBy: "eve" })));
+  await assertFails(setDoc(doc(admin2(), "contacts/awbi-ka004-1993"), contact({ phones: ["1", "2", "3", "4"] })));
+  await assertFails(setDoc(doc(admin2(), "contacts/awbi-ka004-1993"), contact({ website: "Pay by UPI cupa@okaxis" })));
+  await assertFails(setDoc(doc(admin2(), "contacts/awbi-ka004-1993"), contact({ checkedOn: "yesterday" })));
+});
+
+test("only the owner manages the admin list, and only the list", async () => {
+  await seedPeople();
+  await assertSucceeds(setDoc(doc(owner(), "config/admins"), { emails: ["admin2@example.org", "new@example.org"], updatedAt: serverTimestamp() }));
+  await assertFails(setDoc(doc(admin2(), "config/admins"), { emails: ["eve@example.org"], updatedAt: serverTimestamp() }));
+  await assertFails(setDoc(doc(owner(), "config/other"), { emails: [], updatedAt: serverTimestamp() }));
+  await assertFails(setDoc(doc(owner(), "config/admins"), { emails: [], owner: "x", updatedAt: serverTimestamp() }));
+});

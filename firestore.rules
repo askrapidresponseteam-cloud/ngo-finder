@@ -116,7 +116,12 @@ service cloud.firestore {
       // ---------------------------------------------------------- config
       match /config/{doc} {
         allow read: if ngoIsAdmin();
-        allow write: if false;  // Firebase console only
+        // Only the owner, and only the admin list: lowercase emails, at most 50.
+        allow create, update: if ngoIsOwner() && doc == "admins"
+          && request.resource.data.keys().hasOnly(["emails", "updatedAt"])
+          && request.resource.data.emails is list && request.resource.data.emails.size() <= 50
+          && request.resource.data.updatedAt == request.time;
+        allow delete: if false;
       }
 
       // ---------------------------------------------------------- coordinators
@@ -429,6 +434,57 @@ service cloud.firestore {
           && request.resource.data.modBy == request.auth.uid && request.resource.data.modAt == request.time
           && ngoShortOk(request.resource.data.get("modNote", ""), 300);
         allow delete: if (ngoSignedIn() && resource.data.uid == request.auth.uid) || ngoIsAdmin();
+      }
+
+      // ---------------------------------------------------------- outreach log (admins only)
+      // One record per call, email, message or visit to a group. Every save bumps
+      // the revision and writes its own audit entry; nobody else can read them.
+      match /outreach/{id} {
+        function ngoOut() { return request.resource.data; }
+        function ngoOutOk() {
+          return ngoOut().keys().hasOnly(["gid", "gname", "state", "district", "person", "method", "when", "response",
+                                          "phone", "email", "website", "comments", "rev", "createdBy", "createdByEmail",
+                                          "createdAt", "updatedBy", "updatedAt"])
+            && ngoOut().gid is string && ngoOut().gid.matches("[a-z0-9-]{1,200}")
+            && ngoShortOk(ngoOut().gname, 200) && ngoOut().gname.size() > 0
+            && ngoShortOk(ngoOut().state, 60) && ngoShortOk(ngoOut().district, 60)
+            && ngoShortOk(ngoOut().person, 120)
+            && ngoOut().method in ["phone", "email", "whatsapp", "visit"]
+            && ngoOut().when is string && ngoOut().when.matches("20[0-9]{2}-[01][0-9]-[0-3][0-9]")
+            && ngoOut().response in ["yes", "no", "wrong"]
+            && ngoShortOk(ngoOut().phone, 40) && ngoShortOk(ngoOut().email, 200) && ngoShortOk(ngoOut().website, 300)
+            && ngoShortOk(ngoOut().comments, 3000)
+            && ngoOut().updatedBy == request.auth.uid && ngoOut().updatedAt == request.time;
+        }
+        allow read: if ngoIsAdmin();
+        allow create: if ngoIsAdmin() && ngoOutOk() && ngoOut().rev == 0
+          && ngoOut().createdBy == request.auth.uid && ngoOut().createdByEmail == ngoEmail()
+          && ngoOut().createdAt == request.time
+          && ngoAuditedId("outreach_" + id + "_0_" + request.auth.uid, "outreach");
+        allow update: if ngoIsAdmin() && ngoOutOk()
+          && ngoOut().createdBy == resource.data.createdBy && ngoOut().createdByEmail == resource.data.createdByEmail
+          && ngoOut().createdAt == resource.data.createdAt
+          && ngoOut().rev == resource.data.rev + 1
+          && ngoAuditedId("outreach_" + id + "_" + string(ngoOut().rev) + "_" + request.auth.uid, "outreach edited");
+        allow delete: if ngoIsAdmin()
+          && ngoAuditedId("outreach_" + id + "_" + string(resource.data.rev + 1) + "_" + request.auth.uid, "outreach deleted");
+      }
+
+      // ---------------------------------------------------------- contacts checked by the team (public)
+      // The phone, email and website an admin confirmed for a group; the directory
+      // shows them with "Checked by the Rapid Response team on <date>".
+      match /contacts/{gid} {
+        allow read: if true;
+        allow create, update: if ngoIsAdmin() && gid.matches("[a-z0-9-]{1,200}")
+          && request.resource.data.keys().hasOnly(["name", "state", "district", "phones", "emails", "website",
+                                                   "checkedOn", "updatedBy", "updatedAt"])
+          && ngoShortOk(request.resource.data.name, 200)
+          && ngoShortOk(request.resource.data.state, 60) && ngoShortOk(request.resource.data.district, 60)
+          && ngoListOk(request.resource.data.phones, 40) && ngoListOk(request.resource.data.emails, 200)
+          && ngoTextOk(request.resource.data.website, 300)
+          && request.resource.data.checkedOn is string && request.resource.data.checkedOn.matches("20[0-9]{2}-[01][0-9]-[0-3][0-9]")
+          && request.resource.data.updatedBy == request.auth.uid && request.resource.data.updatedAt == request.time;
+        allow delete: if ngoIsAdmin();
       }
     }
     // ===== NGO-DIRECTORY END =====

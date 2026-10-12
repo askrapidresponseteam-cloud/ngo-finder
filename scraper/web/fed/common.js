@@ -64,7 +64,7 @@ export function fmtDate(ts) {
 let toastTimer;
 export function toast(msg) {
   let t = $("toast");
-  if (!t) { t = el("div", { id: "toast", cls: "toast", role: "status" }); document.body.appendChild(t); }
+  if (!t) { t = el("div", { id: "toast", cls: "toast", role: "status" }); (document.querySelector(".ngo-rr") || document.body).appendChild(t); }
   t.textContent = msg; t.classList.add("on");
   clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("on"), 3200);
 }
