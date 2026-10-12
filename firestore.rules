@@ -191,7 +191,7 @@ service cloud.firestore {
       allow update: if signedIn() && app().uid != request.auth.uid
         && onlyChanges(["vouch", "updatedAt", "rev"])
         && nextRev()
-        && app().status in ["submitted", "docs_ok", "visit_required"]
+        && app().status in ["submitted", "info_needed", "docs_ok", "visit_required"]
         && (!("vouch" in app()) || app().vouch.ok == true || app().vouch.by == request.auth.uid)
         && next().vouch.keys().hasOnly(["ok", "by", "email", "note", "at", "role"])
         && next().vouch.by == request.auth.uid && next().vouch.email == email()
