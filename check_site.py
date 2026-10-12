@@ -28,6 +28,17 @@ MUST_HAVE = [
 ]
 
 errors = []
+FED_FILES = ("join.html", "admin.html", "fed/api.js", "fed/common.js", "fed/config.js", "fed/join.js", "fed/admin.js",
+             "fed/public.js", "fed/shared.js", "vendor/firebase.js")
+for f in FED_FILES:
+    if not os.path.exists(os.path.join(SITE, f)):
+        errors.append("missing federation file: " + f)
+    elif f.endswith((".js", ".html")) and not f.startswith("vendor/"):
+        with open(os.path.join(SITE, f), encoding="utf-8") as fh:
+            if LONG_DASH.search(fh.read()):
+                errors.append("long dash found in " + f)
+if os.path.exists(os.path.join(SITE, "fed", "mock.js")):
+    errors.append("fed/mock.js is for local testing only and must not be published")
 for f in ("index.html", "app.js", "styles.css", "vercel.json", "favicon.svg", "data/ngos.json", "data/india-map.json"):
     if not os.path.exists(os.path.join(SITE, f)):
         errors.append("missing file: " + f)

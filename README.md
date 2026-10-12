@@ -54,6 +54,51 @@ bash run.sh && bash deploy.sh
 - Type pills (Animal welfare, Wildlife, Gaushala) and the filter button work in
   every view. Every view has its own link (Copy link).
 
+## Federation (groups sign in, get verified, post needs)
+
+Pages: `join.html` for groups, coordinators and anyone reporting a problem;
+`admin.html` for admins. They stay hidden until a Firebase project is set up.
+
+How a group gets the Verified badge (enforced by `firestore.rules`, not just
+the pages):
+1. It signs in (Google, or a link sent to its email; no SMS or WhatsApp codes)
+   and claims its listing or asks to be listed, with registration proof
+   (AWBI code, NGO Darpan ID, trust or society certificate) as photos or a
+   shared Drive folder.
+2. An admin checks the documents (the console cross-checks AWBI codes against
+   the official list and flags duplicate claims).
+3. Someone else vouches: a coordinator for that district or state, or a
+   verified group the applicant names. Never the applicant, and the admin who
+   verifies cannot be the one who vouched.
+4. If the admin asks for it, a coordinator does a site visit or video call.
+5. Only then can an admin verify. Every step writes a permanent audit entry.
+
+No money: no donate buttons, UPI, bank details or fundraising text anywhere.
+The rules refuse such text; the pages explain why before sending. Verified
+groups post only in-kind needs (food, medicine, supplies, volunteers,
+transport, foster homes, vet help), which expire within 31 days. Anyone signed
+in can report a group; admins can suspend a verification.
+
+### One-time setup (free Firebase plan)
+
+1. https://console.firebase.google.com > Add project (name it, Analytics off).
+2. Build > Authentication > Get started: enable **Google**, and
+   **Email/Password** with **Email link (passwordless sign-in)**. Under
+   Settings > Authorized domains, add `ngo-finder-omega.vercel.app`.
+3. Build > Firestore Database > Create database, production mode, location
+   `asia-south1` (Mumbai).
+4. Project settings > General > Your apps > Web (`</>`): register the app and
+   copy the `firebaseConfig` values into `scraper/web/fed/config.js`
+   (they are public by design).
+5. Publish the rules: `npx firebase-tools login`, then
+   `npx firebase-tools deploy --only firestore:rules --project YOUR_PROJECT_ID`.
+6. The first admin is the owner email written in `firestore.rules`; more
+   admins go in the Firestore document `config/admins` (field `emails`, a
+   list) from the Firebase console. Appoint coordinators in `admin.html`.
+
+The rules have their own tests (`tests/rules`), run on the Firestore emulator
+by the Tests workflow on every push.
+
 ## Base data shipped in the repo
 
 - All Karnataka groups on the AWBI recognised list (as on 31 Mar 2026),

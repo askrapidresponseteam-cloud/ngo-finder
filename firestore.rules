@@ -154,7 +154,7 @@ service cloud.firestore {
         && isAdmin()
         && audited("decide_" + id + "_" + next().status + "_" + request.auth.uid, "decide")
         && onlyChanges(["status", "docsOk", "docsNote", "needsVisit", "decision", "updatedAt", "reviewedBy"])
-        && next().status in ["submitted", "info_needed", "docs_ok", "visit_required", "verified", "rejected"]
+        && next().status in ["submitted", "info_needed", "docs_ok", "visit_required", "verified", "rejected", "suspended"]
         && next().updatedAt == request.time && next().reviewedBy == request.auth.uid
         // Once a visit has been asked for, it cannot be dropped.
         && (app().get("needsVisit", false) != true || next().get("needsVisit", false) == true)

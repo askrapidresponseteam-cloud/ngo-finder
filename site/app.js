@@ -9,6 +9,7 @@
   var NS = "http://www.w3.org/2000/svg";
   var st = { v: "", q: "", cat: "all", state: null, district: null, shown: PAGE, contact: false, people: false, awbi: false, verified: false };
   var ORGS = [], META = {}, GEO = {}, SHAPES = {};
+  var FED = null, VERIFIED = {};  // federation add-ons (fed/public.js), when set up
   var view;
 
   // ---------------------------------------------------------------- helpers
@@ -78,7 +79,7 @@
     st.state = h.get("s") && GEO[h.get("s")] ? h.get("s") : (h.get("s") === "Unknown" ? "Unknown" : null);
     st.district = st.state && h.get("d") ? h.get("d") : null;
     st.cat = TYPE_LABEL[h.get("t")] ? h.get("t") : "all";
-    st.v = h.get("v") === "states" && !st.state && !st.q ? "states" : "";
+    st.v = ["states", "needs"].indexOf(h.get("v")) >= 0 && !st.state && !st.q ? h.get("v") : "";
     st.shown = PAGE;
   }
   function hashFor(o) {
@@ -110,6 +111,7 @@
     if (st.people && !o.pp.length) return false;
     if (st.awbi && !o.ac) return false;
     if (st.verified && o.u) return false;
+    if (st.fedOnly && !VERIFIED[o._id]) return false;
     return true;
   }
   function pool(scope) {
@@ -491,7 +493,7 @@
     document.title = title === "Animal NGOs of India" ? title : title + " | Animal NGOs of India";
   }
   function railOn() {
-    var which = st.q ? "search" : (st.v || st.state) ? "states" : "home";
+    var which = st.q ? "search" : st.v === "needs" ? "needs" : (st.v || st.state) ? "states" : "home";
     Array.prototype.forEach.call(document.querySelectorAll("[data-go]"), function (b) {
       b.classList.toggle("on", b.getAttribute("data-go") === which);
     });
@@ -502,6 +504,7 @@
     railOn();
     if (st.q) renderSearch();
     else if (st.v === "states") renderStates();
+    else if (st.v === "needs" && FED) FED.needsView(view, { setHeader: setHeader, go: go });
     else if (st.state && st.district) renderDistrict();
     else if (st.state) renderState();
     else renderHome();
@@ -630,7 +633,8 @@
 
   function resetAll() {
     st.cat = "all"; st.contact = st.people = st.awbi = st.verified = false;
-    ["fContact", "fPeople", "fAwbi", "fVerified"].forEach(function (id) { $(id).checked = false; });
+    st.fedOnly = false;
+    ["fContact", "fPeople", "fAwbi", "fVerified", "fFed"].forEach(function (id) { $(id).checked = false; });
     syncTypes(); syncFilterDot();
     go({ state: st.state, district: st.district });
   }
@@ -646,6 +650,7 @@
     var meta = el("div", { cls: "meta" }, [
       el("span", { cls: "chip", text: o.c.map(function (c) { return TYPE_LABEL[c]; }).join(", ") || "Type not clear" }),
       o.ac ? el("span", { cls: "chip awbi", title: "Recognised by the Animal Welfare Board of India", text: "AWBI" }) : null,
+      VERIFIED[o._id] ? el("span", { cls: "chip fed", title: "Documents checked, vouched for by the federation", text: "Verified" }) : null,
       o.u ? el("span", { cls: "chip flag", text: "Not verified" }) : null,
       place ? el("span", { text: place }) : null
     ]);
@@ -750,6 +755,7 @@
       tog.lastChild.textContent = open ? "Fewer details" : "More details";
     });
     d.appendChild(tog); d.appendChild(more);
+    if (FED) FED.detail(d, o);
   }
 
   // ---------------------------------------------------------------- wiring
@@ -758,11 +764,32 @@
     Array.prototype.forEach.call(types.children, function (x) { x.setAttribute("aria-pressed", String(x.getAttribute("data-t") === st.cat)); });
   }
   function setType(t) { st.cat = t; st.shown = PAGE; syncTypes(); sync(false); render(); }
-  function syncFilterDot() { $("filterDot").classList.toggle("on", st.contact || st.people || st.awbi || st.verified); }
+  function syncFilterDot() { $("filterDot").classList.toggle("on", st.contact || st.people || st.awbi || st.verified || st.fedOnly); }
   function toggleFilters(force) {
     var f = $("filters"), open = force != null ? force : f.hidden;
     f.hidden = !open; $("filterBtn").setAttribute("aria-expanded", String(open));
     if (open) { window.scrollTo(0, 0); $("fContact").focus(); }
+  }
+
+  // Same id as fed/common.js gidOf: claims, profiles and needs attach to it.
+  function slugify(s) {
+    return String(s || "").toLowerCase().normalize("NFD").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80);
+  }
+  function gidOf(o) { return o.ac ? "awbi-" + slugify(o.ac) : slugify(o.n) + "--" + slugify(o.d) + "--" + slugify(o.st); }
+
+  // Verified badges, needs and claim links come from the federation backend, if it is set up.
+  function loadFederation() {
+    if (!/^https?:$/.test(location.protocol)) return;
+    import("./fed/public.js")
+      .then(function (m) { return m.attach(); })
+      .then(function (fed) {
+        if (!fed) return;
+        FED = fed; VERIFIED = fed.verified || {};
+        var b = $("needsBtn"); if (b) b.hidden = false;
+        var f = $("fFed"); if (f) { f.parentNode.hidden = false; f.checked = !!st.fedOnly; }
+        render();
+      })
+      .catch(function () { /* directory works without it */ });
   }
 
   function boot(DB) {
@@ -774,6 +801,7 @@
       o.k = o.k || []; o.sr = o.sr || []; o.st = o.st || "Unknown";
       o.pp.sort(function (a, b) { return roleRank(a.r) - roleRank(b.r); });
       o.p = o.p || []; o.e = o.e || []; o.s = o.s || []; o.nt = o.nt || []; o.src = o.src || [];
+      o._id = gidOf(o);
     });
 
     var foot = $("foot");
@@ -794,7 +822,7 @@
     });
 
     on($("filterBtn"), function () { toggleFilters(); });
-    [["fContact", "contact"], ["fPeople", "people"], ["fAwbi", "awbi"], ["fVerified", "verified"]].forEach(function (p) {
+    [["fContact", "contact"], ["fPeople", "people"], ["fAwbi", "awbi"], ["fVerified", "verified"], ["fFed", "fedOnly"]].forEach(function (p) {
       $(p[0]).addEventListener("change", function (e) { st[p[1]] = e.target.checked; st.shown = PAGE; syncFilterDot(); render(); });
     });
     on($("share"), copyLink);
@@ -804,6 +832,7 @@
         var g = b.getAttribute("data-go");
         if (g === "home") go({});
         else if (g === "states") go({ v: "states" });
+        else if (g === "needs") go({ v: "needs" });
         else if (g === "search") { window.scrollTo(0, 0); q.focus(); }
         else if (g === "filters") toggleFilters();
         else if (g === "share") copyLink();
@@ -836,6 +865,7 @@
     window.addEventListener("hashchange", fromHash);
     window.addEventListener("popstate", fromHash);
     fromHash();
+    loadFederation();
   }
 
   function fail(msg) {

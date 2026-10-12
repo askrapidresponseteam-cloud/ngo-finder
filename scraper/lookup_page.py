@@ -23,7 +23,8 @@ from .export import sort_key
 from .sources import ola_places
 
 WEB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
-STATIC = ["index.html", "styles.css", "app.js", "favicon.svg", "vercel.json", "robots.txt"]
+STATIC = ["index.html", "styles.css", "app.js", "favicon.svg", "vercel.json", "robots.txt", "join.html", "admin.html"]
+STATIC_DIRS = ["fed", "vendor"]  # federation pages and the self-hosted Firebase SDK
 
 
 def _safe_url(u):
@@ -180,12 +181,22 @@ def write_html(orgs, path, generated=None):
 
 def build_site(orgs, out_dir, generated=None):
     """Static site folder ready for `vercel deploy`."""
-    os.makedirs(os.path.join(out_dir, "data"), exist_ok=True)
-    for name in STATIC:
-        shutil.copyfile(os.path.join(WEB, name), os.path.join(out_dir, name))
+    copy_static(out_dir)
     with open(os.path.join(out_dir, "data", "ngos.json"), "w", encoding="utf-8") as fh:
         json.dump(payload(orgs, generated), fh, ensure_ascii=False, separators=(",", ":"))
     # The map outlines never change with the data, so they ship as their own file.
     with open(os.path.join(out_dir, "data", "india-map.json"), "w", encoding="utf-8") as fh:
         json.dump(state_shapes(), fh, separators=(",", ":"))
+    return out_dir
+
+
+def copy_static(out_dir):
+    """Pages, styles, scripts and the federation files, without touching the data."""
+    os.makedirs(os.path.join(out_dir, "data"), exist_ok=True)
+    for name in STATIC:
+        shutil.copyfile(os.path.join(WEB, name), os.path.join(out_dir, name))
+    for name in STATIC_DIRS:
+        target = os.path.join(out_dir, name)
+        shutil.rmtree(target, ignore_errors=True)
+        shutil.copytree(os.path.join(WEB, name), target, ignore=shutil.ignore_patterns("mock.js"))
     return out_dir

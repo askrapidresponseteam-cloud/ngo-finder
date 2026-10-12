@@ -22,6 +22,7 @@
   <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.5"/></symbol>
   <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M7 17 17 7M7 7h10v10"/></symbol>
   <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></symbol>
+  <symbol id="i-heart" viewBox="0 0 24 24"><path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/></symbol>
   <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
   <symbol id="i-paw" viewBox="0 0 24 24"><ellipse cx="12" cy="16" rx="4.5" ry="3.8"/><circle cx="6" cy="10.5" r="1.9"/><circle cx="9.6" cy="6.6" r="1.9"/><circle cx="14.4" cy="6.6" r="1.9"/><circle cx="18" cy="10.5" r="1.9"/></symbol>
   <symbol id="i-leaf" viewBox="0 0 24 24"><path d="M5 19c0-8 5-14 15-14 0 10-6 15-14 15"/><path d="M5 19 13 11"/></symbol>
@@ -35,6 +36,7 @@
       <button class="round" type="button" data-go="home" aria-label="Overview" title="Overview"><svg class="icon"><use href="#i-grid"/></svg></button>
       <button class="round" type="button" data-go="states" aria-label="All states" title="All states"><svg class="icon"><use href="#i-pin"/></svg></button>
       <button class="round" type="button" data-go="search" aria-label="Search" title="Search"><svg class="icon"><use href="#i-search"/></svg></button>
+      <button class="round" type="button" data-go="needs" id="needsBtn" aria-label="Needs" title="Needs: what groups need now" hidden><svg class="icon"><use href="#i-heart"/></svg></button>
       <button class="round" type="button" data-go="filters" aria-label="Filters" title="Filters"><svg class="icon"><use href="#i-filter"/></svg></button>
       <button class="round mobile-only" type="button" data-go="share" aria-label="Copy link" title="Copy link"><svg class="icon"><use href="#i-link"/></svg></button>
     </nav>
@@ -69,6 +71,7 @@
     <label><input type="checkbox" id="fPeople"> We know who runs it</label>
     <label><input type="checkbox" id="fAwbi"> AWBI recognised</label>
     <label><input type="checkbox" id="fVerified"> Hide unverified web finds</label>
+    <label hidden><input type="checkbox" id="fFed"> Only groups verified by the federation</label>
   </div>
 
   <main id="view" aria-live="polite">

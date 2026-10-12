@@ -6,4 +6,4 @@ import warnings
 # but works fine for the sites this scraper reads.
 warnings.filterwarnings("ignore", message="urllib3 v2 only supports OpenSSL")
 
-__version__ = "2.4.0"
+__version__ = "3.0.0"
