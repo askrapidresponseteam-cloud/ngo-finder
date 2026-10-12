@@ -948,6 +948,18 @@ class TestFederation(unittest.TestCase):
                      'id.matches(".*_" + request.auth.uid)', 'allow update, delete: if false;'):
             self.assertIn(must, rules)
 
+
+class TestNetworks(unittest.TestCase):
+    def test_people_for_animals_units_name_the_national_network(self):
+        from scraper import networks
+        rec = networks.apply({"n": "PFA Agra", "k": [], "nt": [], "sr": []})
+        self.assertTrue(any("Maneka Gandhi" in n for n in rec["nt"]))
+        self.assertIn("https://en.wikipedia.org/wiki/People_for_Animals", rec["sr"])
+        other = networks.apply({"n": "Gopal Das Gau Sewa Ashram", "k": [], "nt": [], "sr": []})
+        self.assertEqual(other["nt"], [])
+        again = networks.apply(rec)
+        self.assertEqual(sum("Maneka Gandhi" in n for n in again["nt"]), 1)
+
 class TestNoLongDashesInProject(unittest.TestCase):
     def test_source_files(self):
         for base, _, files in os.walk(ROOT):

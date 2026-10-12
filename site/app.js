@@ -197,77 +197,102 @@
   }
   // Words in the index that a query word matches, with how well (4 best).
   function matchWord(t) {
+    // Only real matches count: the whole word, its start, the same sound, or
+    // (for 4+ letters) inside a longer word. Typos never produce results; they
+    // only produce a "Did you mean" suggestion.
     var out = {}, tk = pk(t), digits = /^[0-9]+$/.test(t);
-    var maxd = t.length >= 8 ? 2 : t.length >= 4 ? 1 : 0;
     IDX.words.forEach(function (w) {
       var lvl = 0, wk = IDX.keys[w];
       if (w === t) lvl = 4;
       else if (w.indexOf(t) === 0) lvl = 3.5;
-      else if (wk === tk) lvl = 3;
-      else if (tk.length >= 3 && wk.indexOf(tk) === 0) lvl = 2.5;
+      else if (!digits && wk === tk) lvl = 3;
+      else if (!digits && tk.length >= 4 && wk.indexOf(tk) === 0) lvl = 2.5;
       else if (t.length >= 4 && w.indexOf(t) > 0) lvl = digits ? 3 : 2;
-      else if (maxd && !digits && tk.length >= 4 && wk.length >= 4 && lev(wk, tk, maxd) <= maxd) lvl = 1.5;
-      else if (t.length >= 5 && !digits && tk.length >= 4 && wk.length > tk.length && lev(wk.slice(0, tk.length), tk, 1) <= 1) lvl = 1;
       if (lvl) out[w] = lvl;
     });
     return out;
   }
-  // [{o, score, words}] for the current query, best first.
+  // The likeliest intended word for a word that matches nothing: same first
+  // letter, one or two letters different, used by the most groups.
+  function suggestWord(t) {
+    var tk = pk(t);
+    if (t.length < 4 || tk.length < 4 || /^[0-9]+$/.test(t)) return "";
+    var maxd = t.length >= 8 ? 2 : 1, best = "", bestN = 0, bestD = 9;
+    IDX.words.forEach(function (w) {
+      var wk = IDX.keys[w];
+      if (wk.charAt(0) !== tk.charAt(0) || Math.abs(wk.length - tk.length) > maxd) return;
+      var d = lev(wk, tk, maxd);
+      if (d > maxd) return;
+      var n = Object.keys(IDX.vocab[w]).length;
+      if (d < bestD || (d === bestD && n > bestN)) { best = w; bestN = n; bestD = d; }
+    });
+    return best;
+  }
+  function blobOf(o) {
+    if (o._blob == null) {
+      o._blob = " " + FIELDS.map(function (f) { return fieldText(o, f[0]).join(" "); }).join(" ").split(/[^A-Za-z0-9]+/)
+        .map(fold).join(" ") + " ";
+    }
+    return o._blob;
+  }
+  // {list: [{o, score, words}], terms, suggest: [queries]} for a query, best first.
+  // Every word must match (exactly, by its start, by sound or inside a word).
   function search(query) {
     if (!IDX) buildIndex();
     var terms = wordsOf(query).filter(function (t, i, a) { return a.indexOf(t) === i; });
-    if (!terms.length) return { list: [], terms: [], close: false };
+    if (!terms.length) return { list: [], terms: [], suggest: [] };
     var per = terms.map(function (t) {
       var scores = {}, words = matchWord(t);
       Object.keys(words).forEach(function (w) {
         var hits = IDX.vocab[w];
         for (var i in hits) {
-          var s = words[w] * hits[i];
-          if (!scores[i] || scores[i].s < s) scores[i] = { s: s, w: w, lvl: Math.max(words[w], scores[i] ? scores[i].lvl : 0) };
-          else if (words[w] > scores[i].lvl) scores[i].lvl = words[w];
+          // How well the word matched comes first, then which field it is in.
+          var s = words[w] * 100 + hits[i];
+          if (!scores[i] || scores[i].s < s) scores[i] = { s: s, w: w };
         }
       });
       return scores;
     });
-    var all = {}, phrase = fold(query).trim();
-    per.forEach(function (scores, ti) {
-      for (var i in scores) {
-        var a = all[i] || (all[i] = { n: 0, s: 0, words: [], weak: 0 });
-        a.n++; a.s += scores[i].s; a.words.push(scores[i].w);
-        if (scores[i].lvl < 2) a.weak++;
-      }
+    var ids = Object.keys(per[0]).filter(function (i) {
+      for (var k = 1; k < per.length; k++) if (!per[k][i]) return false;
+      return true;
     });
-    // Best: every word matched exactly, by its start, by sound or inside a word.
-    // Then: every word matched, some only with a typo. Last: some words matched.
-    var ids = Object.keys(all);
-    var full = ids.filter(function (i) { return all[i].n === terms.length; });
-    var strong = full.filter(function (i) { return !all[i].weak; });
-    var pick = strong.length ? strong : full.length ? full : ids;
-    var close = !strong.length;
-    var list = pick.map(function (i) {
-      var o = ORGS[i], a = all[i], s = a.s + a.n * 100;
-      if (fold(o.n).indexOf(phrase) >= 0) s += 60;
-      if (fold(o.n).indexOf(phrase) === 0) s += 30;
-      return { o: o, score: s, words: a.words };
+    var phrase = " " + terms.join(" ") + " ";
+    var list = ids.map(function (i) {
+      var o = ORGS[i], s = 0, words = [];
+      per.forEach(function (sc) { s += sc[i].s; words.push(sc[i].w); });
+      if (terms.length > 1 && blobOf(o).indexOf(phrase) >= 0) s += 80;        // the words together, in order
+      var name = " " + wordsOf(o.n).join(" ") + " ";
+      if (name.indexOf(phrase) >= 0) s += 60;
+      if (name.indexOf(phrase) === 0) s += 30;
+      return { o: o, score: s, words: words };
     }).filter(function (r) { return passes(r.o); });
     list.sort(function (x, y) { return y.score - x.score || x.o.n.localeCompare(y.o.n); });
-    return { list: list, terms: terms, close: close };
+    var suggest = [];
+    if (!list.length) {
+      var fixed = terms.map(function (t, k) { return Object.keys(per[k]).length ? t : suggestWord(t); });
+      if (fixed.every(Boolean) && fixed.join(" ") !== terms.join(" ") && search(fixed.join(" ")).list.length) suggest.push({ q: fixed.join(" "), fix: true });
+      if (terms.length > 1) terms.forEach(function (t, k) { if (Object.keys(per[k]).length) suggest.push({ q: t }); });
+    }
+    return { list: list, terms: terms, suggest: suggest };
   }
   // Where a record matched, for the "Matched in" line.
   function whereMatched(o, words) {
-    var set = {};
+    // The field line holding the most of the matched words (ties: the more important field).
+    var set = {}, best = null, bestN = 0;
     words.forEach(function (w) { set[w] = 1; });
     for (var f = 0; f < FIELDS.length; f++) {
       var key = FIELDS[f][0];
       if (key === "n") continue;
       var texts = fieldText(o, key);
       for (var t = 0; t < texts.length; t++) {
-        if (wordsOf(texts[t]).some(function (w) { return set[w]; })) {
-          return { label: FIELDS[f][1], text: key === "p" ? o.p[t] : texts[t] };
-        }
+        var seen = {};
+        wordsOf(texts[t]).forEach(function (w) { if (set[w]) seen[w] = 1; });
+        var n = Object.keys(seen).length;
+        if (n > bestN) { bestN = n; best = { label: FIELDS[f][1], text: key === "p" ? o.p[t] : texts[t] }; }
       }
     }
-    return null;
+    return best;
   }
   // Text with the matched words wrapped in <mark>, built from text nodes only.
   function marked(text, words) {
@@ -288,7 +313,7 @@
     var match = function (name) {
       var ws = wordsOf(name);
       return terms.every(function (t) {
-        return ws.some(function (w) { return w.indexOf(t) === 0 || pk(w) === pk(t) || (t.length >= 5 && lev(pk(w), pk(t), 1) <= 1); });
+        return ws.some(function (w) { return w.indexOf(t) === 0 || pk(w) === pk(t); });
       });
     };
     Object.keys(GEO).forEach(function (s) {
@@ -584,15 +609,40 @@
     var r = search(st.q);
     var crumbs = [["India", function () { go({}); }]];
     setHeader(crumbs, "Results for " + st.q, r.list.length
-      ? plural(r.list.length, "group") + (r.close ? " close to your search" : "") + " across India."
-      : "Nothing found yet.");
+      ? plural(r.list.length, "group") + " across India."
+      : "No group matches every word.");
     var places = placeHits(r.terms);
     if (places.length) {
       var chips = el("div", { cls: "places" }, [el("span", { cls: "muted", text: "Places" })]);
       places.forEach(function (p) { chips.appendChild(on(el("button", { cls: "crumb", type: "button", text: p.label }), p.go)); });
       view.appendChild(chips);
     }
-    if (r.close && r.list.length) view.appendChild(el("p", { cls: "note", text: "No exact match, so these are the closest spellings." }));
+    // A likely typo with a clear fix: show the fixed search, and say so.
+    var fixed = !r.list.length && r.suggest.filter(function (x) { return x.fix; })[0];
+    if (fixed) {
+      var asked = st.q;
+      r = search(fixed.q);
+      setHeader(crumbs, "Results for " + fixed.q, plural(r.list.length, "group") + " across India.");
+      view.appendChild(el("p", { cls: "note" }, ["Nothing matches \"" + asked + "\", so this shows ",
+        el("b", { text: fixed.q }), " instead."]));
+    }
+    if (!r.list.length) {
+      var box = el("div", { cls: "empty card" }, [el("div", { text: "Nothing matches \"" + st.q + "\"." })]);
+      if (r.suggest.length) {
+        var fix = r.suggest.filter(function (x) { return x.fix; }), words = r.suggest.filter(function (x) { return !x.fix; });
+        [[fix, "Did you mean"], [words, "Search one word"]].forEach(function (g) {
+          if (!g[0].length) return;
+          var row = el("div", { cls: "places" }, [el("span", { cls: "muted", text: g[1] })]);
+          g[0].forEach(function (x) { row.appendChild(on(el("button", { cls: "crumb", type: "button", text: x.q }), function () { go({ q: x.q }); })); });
+          box.appendChild(row);
+        });
+      } else box.appendChild(el("div", { cls: "muted", text: "Try fewer words, a town or district, or a short name like PFA." }));
+      if (st.cat !== "all" || st.contact || st.people || st.awbi || st.verified || st.fedOnly) {
+        box.appendChild(on(el("button", { cls: "pill", type: "button", text: "Clear filters" }), resetAll));
+      }
+      view.appendChild(box);
+      return;
+    }
     r.list.forEach(function (x) { x.o._hit = x.words; });
     results(r.list.map(function (x) { return x.o; }), null, true, null);
   }
