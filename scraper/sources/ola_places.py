@@ -546,8 +546,12 @@ def check(http, key, log=print):
             line = "{}: HTTP {}, {} | phones {} | website {} | fields {}".format(
                 label, resp.status_code, d["name"] or "(no name)", ", ".join(d["phones"]) or "none",
                 d["website"] or "none", ",".join(d["keys"]) or (resp.text[:160] or "empty"))
+            r = body.get("result") or {}
+            raw = "; ".join("{}={!r}".format(k, r.get(k)) for k in
+                            ("formatted_phone_number", "international_phone_number", "website", "url"))
             log(line)
             _notice(line)
+            _notice("{} raw contact fields: {}".format(label, raw[:400]))
             continue
         items = parse_items(body)
         kept = [it for it in items if ola_candidate(it)]
