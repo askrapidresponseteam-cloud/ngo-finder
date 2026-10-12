@@ -792,6 +792,22 @@
       .catch(function () { /* directory works without it */ });
   }
 
+  // Licence credits the data sources require, folded away until someone asks.
+  function credits() {
+    var lines = [];
+    if (META.ola) lines.push("Map listings from Ola Maps. That data is available under the Open Database License.");
+    if (META.map_credit) lines.push(META.map_credit + ". District locations from India Post PIN codes.");
+    if (!lines.length) return null;
+    var body = el("div", { cls: "more" }, lines.map(function (t) { return el("p", { text: t }); }));
+    var t = el("button", { cls: "more-toggle", type: "button", "aria-expanded": "false" },
+      [el("span", { cls: "plusdot" }, [plusIcon()]), el("span", { text: "Data credits" })]);
+    on(t, function () {
+      var open = !body.classList.contains("open");
+      body.classList.toggle("open", open); t.setAttribute("aria-expanded", String(open));
+    });
+    return el("div", null, [t, body]);
+  }
+
   function boot(DB) {
     META = DB.meta || {};
     GEO = META.states || {};
@@ -811,8 +827,7 @@
         (META.awbi_date ? " (as on " + META.awbi_date + ")" : "") +
         ", the groups' own websites and pages, news reports and NGO directories. Every entry links to where its details come from." }),
       el("p", { text: "Names under \"Who runs it\" are as published by each source; confirm when you get in touch. District locations on the map are approximate." }),
-      META.ola ? el("p", { text: "Map listings from Ola Maps. That data is available under the Open Database License." }) : null,
-      META.map_credit ? el("p", { text: META.map_credit + ". District locations from India Post PIN codes." }) : null
+      credits()
     ]);
 
     types = $("types");
