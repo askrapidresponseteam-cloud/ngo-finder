@@ -1,0 +1,179 @@
+
+===== all *apis/ strings =====
+apis/
+capis/account-delete
+capis/admin/dashboard/ministry-grant-percentage
+capis/admin/dashboard/ngo-changes/
+capis/admin/dashboard/ngo-count
+capis/admin/dashboard/ngo-overview/
+capis/admin/dashboard/ngo-type-summary
+capis/admin/dashboard/sector-ngos
+capis/admin/dashboard/state-sectors
+capis/admin/dashboard/top-ngos-grants
+capis/admin/dashboard/top-state-grants
+capis/admin/dashboard/top-states
+capis/admin/dashboard/year-wise-enrollment
+capis/admin/dashboard/year-wise-grant-released
+capis/admin/mstr-ministries
+capis/admin/mstr-schemes/
+capis/admin/report/duplicate-member
+capis/admin/report/duplicate-member-details
+capis/admin/report/financial-year-wise
+capis/admin/report/ministry-wise
+capis/admin/report/ngo-wise
+capis/admin/report/scheme-wise
+capis/admin/report/sector-npos
+capis/admin/report/sector-wise
+capis/admin/report/state-wise
+capis/admin/report/top-ngos
+capis/admin/report/un-blacklisted
+capis/captcha
+capis/file
+capis/file/
+capis/forgot
+capis/gen-keys/
+capis/login
+capis/login/mpin
+capis/logout
+capis/lout
+capis/mstr-country
+capis/mstr-districts/
+capis/mstr-states
+capis/mstr-sub-districts/
+capis/otp
+capis/resources/
+capis/resources/GUIDELINE
+capis/resources/SITE_LUPDATE
+capis/resources/circular
+capis/resources/faq
+capis/send-otp
+capis/service-requests
+capis/sys-id
+capis/update-cred
+capis/verify-otp
+capis/web-counter
+
+===== context around search-ngo calls =====
+id:"header.nav_links.about.about_darpan",label:"About Darpan",routerLink:"/about-us"}]},{id:"header.nav_links.npo_directory",label:"NPO Directory",routerLink:"/search-ngo",routerLinkActiveOptions:{exact:!0}},{id:"header.nav_links.grant",label:"Grant-in-aid Portals",routerLink:"/grant-in-aid-portal",routerLinkActiveOptions:{exact:!0}},{id:"header.nav_links.blacklist",label:"Blacklisted NPOs",routerLink:"/blacklisted",routerLink
+pty())this.search();else return}static \u0275fac=function(e){return new(e||t)(N(kt),N(ci),N(ke),N(vt),N(he),N(Pe))};static \u0275cmp=k({type:t,selectors:[["app-search-ngo"]],viewQuery:function(e,i){if(e&1&&ee(l0,5),e&2){let a;K(a=Y())&&(i.captchacomponent=a.first)}},inputs:{fromAdmin:"fromAdmin"},standalone:!0,features:[G],decls:5,vars:4,consts:[["captchacomponent",""],[4,"ngIf"],[3,"heading","breadcrumbs",4,"ngIf"],["id","com
+,[1,"pi","pi-angle-double-right","mr-2"],["routerLink","/"],["routerLink","/circulars"],["routerLink","/about-us"],["routerLink","/guidelines"],["routerLink","/search-ngo"],["routerLink","/grant-in-aid-portal"],["routerLink","/blacklisted"],["routerLink","/link-to-us"],["routerLink","/terms"],["routerLink","/faq"],["routerLink","/contact-us"],["routerLink","/policy","fragment","privacy"],["routerLink","/policy","fragment","lin
+r},{path:"account-recovery",component:xs},{path:"create-account",component:Yr},{path:"circulars",component:ts},{path:"grant-in-aid-portal",component:is},{path:"search-ngo",component:L6},{path:"contact-us",component:os},{path:"reset-password",component:ss,canActivate:[$6]},{path:"faq",component:as},{path:"guidelines",component:ms},{path:"terms",component:ls},{path:"policy",component:ps},{path:"link-to-us",component:cs},{path:"s
+
+===== context around ngo-details calls =====
+]})}showInfoMsg(){this.appComponent.showGlobalToast(this.displayMsg,this.severity,3e3)}nvgtNgo(){this._router.navigate(["portal/ngo-details"])}nvgtMem(){this._router.navigate(["portal/member-details"])}nvgtWa(n){this._router.navigate(["portal/working-area"],{state:{activeIndex:n}})}onDateSelect(n){let e=new Date(Date.UTC(n.getFullYear(),n
+]})}showInfoMsg(){this.appComponent.showGlobalToast(this.displayMsg,this.severity,3e3)}nvgtNgo(){this._router.navigate(["portal/ngo-details"])}nvgtMem(){this._router.navigate(["portal/member-details"])}nvgtWa(t){this._router.navigate(["portal/working-area"],{state:{activeIndex:t}})}onDateSelect(t){let e=new Date(Date.UTC(t.getFullYear(),t
+
+===== post/get call paths (http client wrappers) =====
+""
+"*"
+"?stateId="
+"Accept-Ranges"
+"Content-Disposition"
+"Content-Encoding"
+"Content-Length"
+"Content-Type"
+"Token"
+"_path_"
+"a"
+"aadharNumber"
+"address"
+"aria-label"
+"blob"
+"canvas"
+"capId"
+"captcha"
+"captchaId"
+"color"
+"confirmMpin"
+"confirmPassword"
+"confirmation"
+"content-length"
+"createPassword"
+"createPassword.otp"
+"dateReg"
+"dc:creator"
+"disablePreferences"
+"district"
+"dob"
+"easing"
+"email"
+"emailOTP"
+"emailOtp"
+"file"
+"filename"
+"fs"
+"gender"
+"grants.link"
+"hasAltText"
+"home.map.states"
+"http"
+"https"
+"luminosity"
+"maxCanvasPixels"
+"member1"
+"member1.memberId"
+"member2"
+"member2.memberId"
+"memberId"
+"membersCount"
+"mobile"
+"mobileOTP"
+"mobileOtp"
+"mpin"
+"mpinGeneration"
+"mpinGeneration.otp"
+"name"
+"nameddest"
+"newPassword"
+"ngoRegRenewbleAvailable"
+"ngoRegRenewbleDate"
+"ngo_type"
+"npoName"
+"offset"
+"oldPassword"
+"orgName"
+"orgPan"
+"otp"
+"otpLogin"
+"otpLogin.captcha"
+"otpLogin.captchaId"
+"page"
+"pagemode"
+"pan"
+"panIncrDate"
+"panNumber"
+"parentName"
+"parentType"
+
+===== try master endpoints =====
+--- GET https://ngodarpan.gov.in/apis/capis/mstr-states
+HTTP 401, 0 bytes
+
+--- GET https://ngodarpan.gov.in/apis/capis/web-counter
+HTTP 401, 0 bytes
+
+--- GET https://ngodarpan.gov.in/apis/capis/sys-id
+HTTP 200, 85 bytes
+{"statusCode":"CAP111","statusDesc":"Invalid Request","displayMsg":"Invalid request"}
+
+===== try search candidates =====
+--- GET https://ngodarpan.gov.in/apis/capis/search-ngo
+HTTP 401, 0 bytes
+
+--- POST https://ngodarpan.gov.in/apis/capis/search-ngo
+HTTP 401, 0 bytes
+
+--- GET https://ngodarpan.gov.in/apis/capis/portal/search-ngo
+HTTP 401, 0 bytes
+
+--- POST https://ngodarpan.gov.in/apis/capis/portal/search-ngo
+HTTP 401, 0 bytes
+
+--- GET https://ngodarpan.gov.in/apis/papis/search-ngo
+HTTP 302, 0 bytes
+
+--- POST https://ngodarpan.gov.in/apis/papis/search-ngo
+HTTP 302, 0 bytes
+
+
+probe done
