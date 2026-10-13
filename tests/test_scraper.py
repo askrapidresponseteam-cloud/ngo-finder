@@ -1105,6 +1105,30 @@ class TestDeepSweep(unittest.TestCase):
         self.assertEqual(deep.add(have, new), [])
 
 
+class TestDarpan(unittest.TestCase):
+    def test_merges_without_duplicates_and_respects_removals(self):
+        import tempfile
+        from scraper import darpan
+        csvp = os.path.join(tempfile.mkdtemp(), "darpan_animal.csv")
+        with open(csvp, "w", encoding="utf-8") as fh:
+            fh.write("name,state,district,city,field_of_work,resource,dataset\n")
+            fh.write("Asare Animal Trust,Karnataka,Dakshina Kannada,Surathkal,Animal Welfare,r1,d1\n")  # already listed
+            fh.write("Seva Animal Welfare Organisations,KARNATAKA,Udupi,,Animal Welfare,r1,d1\n")
+            fh.write("Sudheendra Aithal Rescue,Karnataka,Udupi,,Animal Welfare,r1,d1\n")  # taken off
+            fh.write("New Hope Animal Welfare Society,Tamil Nadu,Thiruvallur,,Animal Welfare,r1,d1\n")
+            fh.write("x,Karnataka,Udupi,,Animal Welfare,r1,d1\n")  # name too short
+        rows = darpan.records(csvp)
+        data = {"orgs": [
+            {"n": "Asare Animal Trust", "k": [], "st": "Karnataka", "d": "Dakshina Kannada"},
+            {"n": "Seva Animal Welfare Organisation", "k": [], "st": "Karnataka", "d": "Udupi"},
+        ], "meta": {}}
+        added = darpan.merge(data, rows)
+        self.assertEqual([a["n"] for a in added], ["New Hope Animal Welfare Society"])
+        self.assertEqual(added[0]["st"], "Tamil Nadu")
+        self.assertEqual(added[0]["d"], "Thiruvallur")
+        self.assertTrue(added[0]["sr"])  # always a source link
+
+
 class TestFederation(unittest.TestCase):
     def test_site_build_ships_federation_files_but_not_the_mock(self):
         out = tempfile.mkdtemp()

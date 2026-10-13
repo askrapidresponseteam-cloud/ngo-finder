@@ -54,8 +54,8 @@ function signIn() {
 }
 
 function tabs() {
-  const parts = [["outreach", "Outreach", (b) => outreachTab(b, { B, DIR, setSub })], ["queue", "Applications", queue],
-    ["comments", "Comments", comments], ["reports", "Reports", reports], ["coord", "Coordinators", coordinators]];
+  const parts = [["outreach", "Outreach", (b) => outreachTab(b, { B, DIR, setSub })], ["suggest", "Suggestions", suggestions],
+    ["queue", "Applications", queue], ["comments", "Comments", comments], ["reports", "Reports", reports], ["coord", "Coordinators", coordinators]];
   if (B.isOwner()) parts.push(["admins", "Admins", admins]);
   parts.push(["audit", "Audit log", audit]);
   const bar = el("nav", { cls: "otabs", "aria-label": "Admin sections" }), body = el("div");
@@ -66,6 +66,61 @@ function tabs() {
   };
   parts.forEach(([k, l]) => bar.appendChild(el("button", { cls: "otab", type: "button", "data-k": k, text: l, on: { click: () => show(k) } })));
   clear(view); view.appendChild(bar); view.appendChild(body); show("outreach");
+}
+
+// ------------------------------------------------------------------ suggested groups
+// "Know a group that's missing?" answers. Check each one (its website or page, or a
+// call), then publish it to the directory or turn it down. Publishing shows it on the
+// site within a minute, as "Suggested and checked by the Rapid Response team".
+const slug = (x) => String(x || "").toLowerCase().normalize("NFD").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80);
+async function suggestions(body) {
+  const list = await B.suggestions();
+  list.sort((a, b) => ((a.createdAt && a.createdAt.toMillis ? a.createdAt.toMillis() : 0) - (b.createdAt && b.createdAt.toMillis ? b.createdAt.toMillis() : 0)));
+  setSub(list.length + " suggestion(s) waiting.");
+  if (!list.length) return body.appendChild(card([el("p", { cls: "ohint", text: "Nothing waiting. Suggestions people send from the directory arrive here." })]));
+  const ul = el("ul", { cls: "olist osugs" });
+  list.forEach((sg) => {
+    const dupes = DIR ? DIR.orgs.filter((o) => {
+      const f = fold([o.n].concat(o.k || []).join(" "));
+      const words = fold(sg.name).split(/[^a-z0-9]+/).filter((w) => w.length > 3);
+      return words.length && words.every((w) => f.includes(w));
+    }).slice(0, 3) : [];
+    const cat = el("select", null, [["animal", "Animal welfare"], ["cattle", "Gaushala"], ["wildlife", "Wildlife"]]
+      .map(([v, l]) => el("option", { value: v, text: l })));
+    const note = el("input", { maxlength: "500", placeholder: "Note (what you checked, or why not)" });
+    const act = el("div", { cls: "row-actions" });
+    const li = el("li", null, [el("div", { cls: "sgbody" }, [
+      el("div", { cls: "oname", text: sg.name }),
+      el("div", { cls: "oplace", text: [sg.town, sg.district, sg.state].filter(Boolean).join(", ") + " . from " + (sg.byEmail || "") + ", " + fmtDate(sg.createdAt) }),
+      [sg.phone, sg.website].filter(Boolean).length ? el("div", { cls: "ohint", text: [sg.phone, sg.website].filter(Boolean).join(" . ") }) : null,
+      sg.about ? el("p", { cls: "ohint", text: sg.about }) : null,
+      dupes.length ? el("div", { cls: "oerrors", text: "Maybe already listed: " + dupes.map((o) => o.n + " (" + o.d + ", " + o.st + ")").join("; ") }) : null,
+      el("div", { cls: "row-actions" }, [cat, note]), act
+    ])]);
+    const resolve = async (status, fn) => {
+      try { if (fn) await fn(); await B.resolveSuggestion(sg.id, status, note.value.trim()); toast(status === "added" ? "Published to the directory." : "Turned down."); suggestions(clear(body)); }
+      catch (e) { toast(errText(e)); }
+    };
+    act.append(
+      el("button", { cls: "obig primary", type: "button", text: "Checked, add to the directory", on: { click: () => {
+        if (!confirm("Publish " + sg.name + " to the public directory?")) return;
+        const gid = slug(sg.name) + "--" + slug(sg.district || sg.town) + "--" + slug(sg.state);
+        resolve("added", () => B.publishExtra(gid, {
+          n: sg.name, k: [], c: [cat.value], st: sg.state, d: sg.district || "Unknown", a: sg.town || "",
+          ad: [sg.town, sg.district, sg.state].filter(Boolean).join(", "),
+          p: sg.phone ? [sg.phone] : [], e: [], w: /^https?:\/\//.test(sg.website || "") ? sg.website : "",
+          s: [], nt: sg.about ? [sg.about.slice(0, 300)] : [],
+          sr: /^https?:\/\//.test(sg.website || "") ? [sg.website] : []
+        }));
+      } } }),
+      el("button", { cls: "osmall danger", type: "button", text: "Turn down", on: { click: () => {
+        if (!note.value.trim()) return toast("Write why, for the audit trail.");
+        resolve("rejected");
+      } } }));
+    ul.appendChild(li);
+  });
+  body.appendChild(card([el("h2", { cls: "otitle", text: "Suggested groups" }),
+    el("p", { cls: "ohint", text: "Check each one before publishing: open its website or page, or call. Published groups show in the directory within a minute." }), ul], "ostep"));
 }
 
 // ------------------------------------------------------------------ admins (owner only)

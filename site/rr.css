@@ -272,6 +272,17 @@
 .ngo-rr .comment .cmeta + div{margin-bottom:2px}
 .ngo-rr .comments .none{list-style:none}
 .ngo-rr .checked{font-size:13px;color:#1e7a3a;margin:4px 0 8px}
+.ngo-rr .suggestbox{margin:20px 0 0;display:grid;gap:10px;max-width:560px}
+.ngo-rr .suggestlink{font-size:14px;padding:10px 0}
+.ngo-rr .stitle{font-size:19px;font-weight:700;margin:0}
+.ngo-rr .sfield{display:grid;gap:6px}
+.ngo-rr .sfield .olabel{font-size:14px;font-weight:700}
+.ngo-rr .sduplist{margin:4px 0 0;padding-left:20px;font-size:13px;color:var(--muted)}
+.ngo-rr img.aicon{height:24px;width:auto;display:inline-block;vertical-align:middle}
+.ngo-rr .pill img.aicon{margin:-4px 0}
+.ngo-rr img.bicon{height:40px;margin:8px auto 4px;display:block}
+.ngo-rr .bars{box-sizing:content-box}
+.ngo-rr img.eicon{height:84px;margin:0 auto}
 .ngo-rr{--bg:var(--sg-mist,#F5F4F2); --ink:var(--sg-ink,#0D0D0F); --muted:var(--sg-slate,#6B6963); --soft:var(--sg-muted,#8A8780);
   --white:var(--sg-paper,#fff); --blue:var(--sg-ink,#0D0D0F); --hatch:var(--sg-line,#E4E2DE); --land:var(--sg-fog,#EFEDEA);
   --warn:var(--sg-hold-text,#9A5E06); --warn-soft:var(--sg-hold-bg,#FBEEDB);
@@ -569,3 +580,18 @@
 .ngo-rr .kdlogo{display:inline-flex;align-items:center;margin-right:auto;padding:8px 0}
 .ngo-rr .kdlogo img{height:32px;width:auto;display:block}
 .ngo-rr .kd .eyebar{gap:8px 24px}
+.ngo-rr .suggestbox{margin:24px 0 0;display:grid;gap:12px;max-width:620px}
+.ngo-rr .suggestlink{font:700 16px/1.3 var(--sans);color:var(--link);text-decoration:underline;min-height:48px;text-align:left}
+.ngo-rr .stitle{font:800 22px/1.2 var(--disp);margin:0}
+.ngo-rr .sfield{display:grid;gap:7px}
+.ngo-rr .sfield .olabel{font:700 16px/1.3 var(--sans)}
+.ngo-rr .suggestbox input,.ngo-rr .suggestbox select,.ngo-rr .suggestbox textarea{font:500 17px/1.4 var(--sans);min-height:52px;border:1.5px solid var(--line2);border-radius:0;padding:10px 14px;background:var(--white);width:100%}
+.ngo-rr .suggestbox input:focus,.ngo-rr .suggestbox select:focus,.ngo-rr .suggestbox textarea:focus{outline:none;border-color:var(--ink);box-shadow:0 0 0 2px var(--ink)}
+.ngo-rr .sduplist{margin:2px 0 0;padding-left:20px;font-size:15px;color:var(--graphite)}
+.ngo-rr .osugs li{display:block}
+.ngo-rr .sgbody{display:grid;gap:8px;width:100%}
+.ngo-rr .sgbody .row-actions select{min-height:48px;border:1.5px solid var(--line2);border-radius:0;font:600 15px/1 var(--sans);padding:0 10px;background:var(--white)}
+.ngo-rr .sgbody .row-actions input{flex:1;min-width:200px;min-height:48px;border:1.5px solid var(--line2);border-radius:0;font:500 16px/1 var(--sans);padding:0 12px}
+.ngo-rr img.aicon{height:26px;width:auto;display:inline-block;vertical-align:middle}
+.ngo-rr img.bicon{height:40px;margin:8px auto 4px;display:block}
+.ngo-rr img.eicon{height:96px;margin:0 auto}

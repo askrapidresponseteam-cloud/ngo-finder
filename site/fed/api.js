@@ -312,6 +312,29 @@ const api = {
   },
   isOwner() { return ((auth.currentUser && auth.currentUser.email) || "").toLowerCase() === OWNER; },
 
+  // ------------------------------------------------------------ suggested groups and extra listings
+  async suggest(rec) {
+    const u = auth.currentUser;
+    await fb.addDoc(col("suggestions"), Object.assign({}, rec, {
+      uid: u.uid, byEmail: (u.email || "").toLowerCase(), status: "new", createdAt: now()
+    }));
+  },
+  async suggestions() {
+    return snapList(await fb.getDocs(fb.query(col("suggestions"), fb.where("status", "==", "new"), fb.limit(300))));
+  },
+  async resolveSuggestion(id, status, resolution) {
+    await fb.updateDoc(ref("suggestions/" + id), { status, resolution: resolution || "",
+      resolvedBy: auth.currentUser.uid, resolvedAt: now() });
+  },
+  // An extra public listing, checked by an admin (shown merged into the directory).
+  async publishExtra(gid, rec) {
+    await fb.setDoc(ref("extras/" + gid), Object.assign({}, rec, { addedBy: auth.currentUser.uid, addedAt: now() }));
+  },
+  async removeExtra(gid) { await fb.deleteDoc(ref("extras/" + gid)); },
+  async extras() {
+    return snapList(await fb.getDocs(fb.query(col("extras"), fb.limit(2000))));
+  },
+
   async auditLog() {
     return snapList(await fb.getDocs(fb.query(col("audit"), fb.orderBy("at", "desc"), fb.limit(200))));
   }

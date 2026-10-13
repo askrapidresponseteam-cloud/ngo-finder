@@ -2,7 +2,8 @@
 (function () {
   "use strict";
 
-  var TYPES = [["all", "All", "i-grid"], ["animal", "Animal welfare", "i-paw"], ["wildlife", "Wildlife", "i-leaf"], ["cattle", "Gaushala", "i-cow"]];
+  var TYPES = [["all", "All", "i-grid"], ["animal", "Animal welfare", "img:dog"], ["wildlife", "Wildlife", "img:tiger"], ["cattle", "Gaushala", "img:cow"]];
+  var TYPE_IMG = { animal: "dog", wildlife: "tiger", cattle: "cow" };
   var TYPE_LABEL = { animal: "Animal welfare", wildlife: "Wildlife", cattle: "Gaushala" };
   var PAGE = 40, TOP = 6, SCALE = 20;
   var SMALL = /^(of|for|and|the|to|a|an|in|on|at)$/i;
@@ -85,9 +86,16 @@
     return e;
   }
   function icon(id) {
+    if (id.indexOf("img:") === 0) return aimg(id.slice(4));
     var s = sv("svg", { "class": "icon", "aria-hidden": "true" });
     s.appendChild(sv("use", { href: "#" + id }));
     return s;
+  }
+  // A small photo of an animal (img/<name>.png); decorative, so no alt text.
+  function aimg(name, cls) {
+    var i = el("img", { cls: cls || "aicon", src: BASE + "img/" + name + ".png", alt: "", loading: "lazy" });
+    i.addEventListener("error", function () { i.remove(); });
+    return i;
   }
   function on(node, fn) { node.addEventListener("click", fn); return node; }
   function safe(u) { return /^(https?:|tel:|mailto:)/i.test(u || "") ? u : ""; }
@@ -607,7 +615,7 @@
       b.appendChild(el("span", { cls: "barbadge", text: fmt(counts[k]) }));
       var col = el("button", { cls: "barcol", type: "button", "aria-pressed": String(st.cat === k),
         "aria-label": (TYPE_LABEL[k] || "Type not clear") + ", " + plural(counts[k], "group") },
-        [b, el("small", { text: TYPE_LABEL[k] || "Not clear" })]);
+        [b, TYPE_IMG[k] ? aimg(TYPE_IMG[k], "aicon bicon") : null, el("small", { text: TYPE_LABEL[k] || "Not clear" })]);
       if (k === "none") col.disabled = true;
       else on(col, function () { setType(st.cat === k ? "all" : k); });
       bars.appendChild(col);
@@ -781,7 +789,7 @@
         el("b", { text: fixed.q }), " instead."]));
     }
     if (!r.list.length) {
-      var box = el("div", { cls: "empty card" }, [el("div", { text: "Nothing matches \"" + st.q + "\"." })]);
+      var box = el("div", { cls: "empty card" }, [aimg("cat", "aicon eicon"), el("div", { text: "Nothing matches \"" + st.q + "\"." })]);
       if (r.suggest.length) {
         var fix = r.suggest.filter(function (x) { return x.fix; }), words = r.suggest.filter(function (x) { return !x.fix; });
         [[fix, "Did you mean"], [words, "Search one word"]].forEach(function (g) {
@@ -794,11 +802,36 @@
       if (st.cat !== "all" || st.contact || st.people || st.awbi || st.verified || st.fedOnly) {
         box.appendChild(on(el("button", { cls: "pill", type: "button", text: "Clear filters" }), resetAll));
       }
+      var sug = suggestEntry(); if (sug) box.appendChild(sug);
       view.appendChild(box);
       return;
     }
     r.list.forEach(function (x) { x.o._hit = x.words; });
     results(r.list.map(function (x) { return x.o; }), null, true, null);
+  }
+
+  // "Know a group that's missing?" (shown once the federation backend is live).
+  function suggestEntry() {
+    if (!FED || !FED.suggest) return null;
+    var box = el("div", { cls: "suggestbox" });
+    var b = el("button", { cls: "linkish suggestlink", type: "button", text: "Know a group that is missing? Add it" });
+    on(b, function () {
+      b.remove();
+      FED.suggest(box, {
+        states: Object.keys(GEO).sort(),
+        districtsOf: function (st2) { return (GEO[st2] || []).map(function (d) { return d[0]; }); },
+        findGroups: function (q2, max) {
+          var t = fold(q2).split(/[^a-z0-9]+/).filter(Boolean);
+          if (!t.length) return [];
+          return ORGS.filter(function (o) {
+            var f = fold([o.n].concat(o.k).join(" "));
+            return t.every(function (w) { return f.indexOf(w) >= 0; });
+          }).slice(0, max || 3);
+        }
+      });
+    });
+    box.appendChild(b);
+    return box;
   }
 
   function contactRank(o) { return o.p.length ? 0 : o.e.length ? 1 : (o.w || o.s.length) ? 2 : 3; }
@@ -812,6 +845,7 @@
     }
     if (!list.length) {
       var e = el("div", { cls: "empty card" }, [
+        aimg("cat", "aicon eicon"),
         el("div", { text: st.q ? "Nothing matches \"" + st.q + "\"." : "No groups here with these filters." }),
         el("div", { cls: "muted", text: "Try a town name, a short name like PFA, fewer words, or a different type." })
       ]);
@@ -835,6 +869,7 @@
       });
       view.appendChild(more);
     }
+    var sug = suggestEntry(); if (sug) view.appendChild(sug);
   }
 
   function resetAll() {
@@ -1024,11 +1059,29 @@
     import(BASE + "fed/public.js")
       .then(function (m) { return m.attach(); })
       .then(function (fed) {
-        if (!fed) return;
+        if (!fed) return null;
         FED = fed; VERIFIED = fed.verified || {};
         var b = $("needsBtn"); if (b) b.hidden = false;
         var f = $("fFed"); if (f) { f.parentNode.hidden = false; f.checked = !!st.fedOnly; }
         render();
+        return fed.extras();
+      })
+      .then(function (extras) {
+        // Groups the team added by hand (checked suggestions), merged in like any other.
+        if (!extras || !extras.length) return;
+        var have = {};
+        ORGS.forEach(function (o) { have[o._id] = 1; });
+        var added = 0;
+        extras.forEach(function (x) {
+          var o = { n: x.n, k: x.k || [], c: x.c || [], st: x.st || "Unknown", d: x.d || "Unknown", a: x.a || "",
+            ad: x.ad || "", ra: "", p: uniqPhones(x.p || []), e: x.e || [], w: x.w || "", s: x.s || [], ac: "", av: "",
+            src: ["Suggested and checked by the Rapid Response team"], sr: x.sr || [], u: false, m: "",
+            nt: x.nt || [], pp: [] };
+          o._id = x.id || gidOf(o);
+          if (have[o._id]) return;
+          have[o._id] = 1; ORGS.push(o); added++;
+        });
+        if (added) { IDX = null; render(); }
       })
       .catch(function () { /* directory works without it */ });
   }

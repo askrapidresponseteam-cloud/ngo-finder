@@ -25,7 +25,7 @@ from .sources import ola_places
 WEB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
 STATIC = ["index.html", "styles.css", "app.js", "favicon.svg", "favicon.png", "apple-touch-icon.png", "og-image.png",
           "vercel.json", "robots.txt", "join.html", "admin.html", "page.css", "kindaura-logo.png"]
-STATIC_DIRS = ["fed", "vendor"]  # federation pages and the self-hosted Firebase SDK
+STATIC_DIRS = ["fed", "vendor", "img"]  # federation pages and the self-hosted Firebase SDK
 
 
 def _safe_url(u):

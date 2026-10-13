@@ -361,3 +361,8 @@ dl{font-size:16px}
 .sgbody{display:grid;gap:8px;width:100%}
 .sgbody .row-actions select{min-height:48px;border:1.5px solid var(--line2);border-radius:0;font:600 15px/1 var(--sans);padding:0 10px;background:var(--white)}
 .sgbody .row-actions input{flex:1;min-width:200px;min-height:48px;border:1.5px solid var(--line2);border-radius:0;font:500 16px/1 var(--sans);padding:0 12px}
+
+/* animal photos on the category buttons, the chart and empty states */
+img.aicon{height:26px;width:auto;display:inline-block;vertical-align:middle}
+img.bicon{height:40px;margin:8px auto 4px;display:block}
+img.eicon{height:96px;margin:0 auto}

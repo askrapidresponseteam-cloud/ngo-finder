@@ -576,3 +576,47 @@ test("only the owner manages the admin list, and only the list", async () => {
   await assertFails(setDoc(doc(owner(), "config/other"), { emails: [], updatedAt: serverTimestamp() }));
   await assertFails(setDoc(doc(owner(), "config/admins"), { emails: [], owner: "x", updatedAt: serverTimestamp() }));
 });
+
+
+// ------------------------------------------------------------- suggested groups and extras
+const suggestion = (over = {}) => Object.assign({ name: "Almighty Animal Sanctuary Trust", state: "Tamil Nadu", district: "Thiruvallur",
+  town: "Sendrayanapalayam", phone: "+91 89393 20846", email: "", website: "https://www.almightyanimalsanctuary.org/",
+  about: "500+ rescued animals", uid: "eve", byEmail: "eve@example.org", status: "new", createdAt: serverTimestamp() }, over);
+
+test("anyone signed in can suggest a group; only admins and the sender can read it", async () => {
+  await seedPeople();
+  await assertSucceeds(setDoc(doc(stranger(), "suggestions/g1"), suggestion()));
+  await assertSucceeds(getDoc(doc(stranger(), "suggestions/g1")));
+  await assertSucceeds(getDoc(doc(admin2(), "suggestions/g1")));
+  await assertFails(getDoc(doc(applicant(), "suggestions/g1")));
+  await assertFails(getDoc(doc(anon(), "suggestions/g1")));
+  await assertFails(setDoc(doc(anon(), "suggestions/g2"), suggestion({ uid: "nobody", byEmail: "x@example.org" })));
+  await assertFails(setDoc(doc(stranger(), "suggestions/g3"), suggestion({ status: "added" })));
+  await assertFails(setDoc(doc(stranger(), "suggestions/g4"), suggestion({ about: "Send money by UPI to help@okaxis" })));
+  await assertFails(setDoc(doc(stranger(), "suggestions/g5"), suggestion({ uid: "alice" })));
+});
+
+test("only an admin resolves a suggestion, and only its outcome fields", async () => {
+  await seedPeople();
+  await setDoc(doc(stranger(), "suggestions/g1"), suggestion());
+  await assertFails(updateDoc(doc(stranger(), "suggestions/g1"), { status: "added", resolvedBy: "eve", resolvedAt: serverTimestamp() }));
+  await assertFails(updateDoc(doc(admin2(), "suggestions/g1"), { status: "added", name: "Changed", resolvedBy: "admin2", resolvedAt: serverTimestamp() }));
+  await assertSucceeds(updateDoc(doc(admin2(), "suggestions/g1"), { status: "added", resolution: "Checked their site", resolvedBy: "admin2", resolvedAt: serverTimestamp() }));
+});
+
+const extra = (over = {}) => Object.assign({ n: "Almighty Animal Sanctuary Trust", k: [], c: ["animal"], st: "Tamil Nadu",
+  d: "Thiruvallur", a: "Sendrayanapalayam", ad: "Sendrayanapalayam, Thiruvallur, Tamil Nadu", p: ["+91 89393 20846"], e: [],
+  w: "https://www.almightyanimalsanctuary.org/", s: [], nt: [], sr: ["https://www.almightyanimalsanctuary.org/"],
+  addedBy: "admin2", addedAt: serverTimestamp() }, over);
+
+test("extra listings: admin-written, public to read, no money text", async () => {
+  await seedPeople();
+  await assertSucceeds(setDoc(doc(admin2(), "extras/almighty--thiruvallur--tamil-nadu"), extra()));
+  await assertSucceeds(getDoc(doc(anon(), "extras/almighty--thiruvallur--tamil-nadu")));
+  await assertSucceeds(getDocs(collection(anon(), "extras")));
+  await assertFails(setDoc(doc(stranger(), "extras/fake--x--y"), extra({ addedBy: "eve" })));
+  await assertFails(setDoc(doc(admin2(), "extras/almighty--thiruvallur--tamil-nadu"), extra({ nt: ["Donate by GPay 98450"] })));
+  await assertFails(setDoc(doc(admin2(), "extras/BadId"), extra()));
+  await assertFails(deleteDoc(doc(stranger(), "extras/almighty--thiruvallur--tamil-nadu")));
+  await assertSucceeds(deleteDoc(doc(owner(), "extras/almighty--thiruvallur--tamil-nadu")));
+});

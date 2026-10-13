@@ -312,3 +312,8 @@ a.act{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sfield{display:grid;gap:6px}
 .sfield .olabel{font-size:14px;font-weight:700}
 .sduplist{margin:4px 0 0;padding-left:20px;font-size:13px;color:var(--muted)}
+img.aicon{height:24px;width:auto;display:inline-block;vertical-align:middle}
+.pill img.aicon{margin:-4px 0}
+img.bicon{height:40px;margin:8px auto 4px;display:block}
+.bars{box-sizing:content-box}
+img.eicon{height:84px;margin:0 auto}

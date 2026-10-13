@@ -2,7 +2,8 @@
 (function () {
   "use strict";
 
-  var TYPES = [["all", "All", "i-grid"], ["animal", "Animal welfare", "i-paw"], ["wildlife", "Wildlife", "i-leaf"], ["cattle", "Gaushala", "i-cow"]];
+  var TYPES = [["all", "All", "i-grid"], ["animal", "Animal welfare", "img:dog"], ["wildlife", "Wildlife", "img:tiger"], ["cattle", "Gaushala", "img:cow"]];
+  var TYPE_IMG = { animal: "dog", wildlife: "tiger", cattle: "cow" };
   var TYPE_LABEL = { animal: "Animal welfare", wildlife: "Wildlife", cattle: "Gaushala" };
   var PAGE = 40, TOP = 6, SCALE = 20;
   var SMALL = /^(of|for|and|the|to|a|an|in|on|at)$/i;
@@ -85,9 +86,16 @@
     return e;
   }
   function icon(id) {
+    if (id.indexOf("img:") === 0) return aimg(id.slice(4));
     var s = sv("svg", { "class": "icon", "aria-hidden": "true" });
     s.appendChild(sv("use", { href: "#" + id }));
     return s;
+  }
+  // A small photo of an animal (img/<name>.png); decorative, so no alt text.
+  function aimg(name, cls) {
+    var i = el("img", { cls: cls || "aicon", src: BASE + "img/" + name + ".png", alt: "", loading: "lazy" });
+    i.addEventListener("error", function () { i.remove(); });
+    return i;
   }
   function on(node, fn) { node.addEventListener("click", fn); return node; }
   function safe(u) { return /^(https?:|tel:|mailto:)/i.test(u || "") ? u : ""; }
@@ -607,7 +615,7 @@
       b.appendChild(el("span", { cls: "barbadge", text: fmt(counts[k]) }));
       var col = el("button", { cls: "barcol", type: "button", "aria-pressed": String(st.cat === k),
         "aria-label": (TYPE_LABEL[k] || "Type not clear") + ", " + plural(counts[k], "group") },
-        [b, el("small", { text: TYPE_LABEL[k] || "Not clear" })]);
+        [b, TYPE_IMG[k] ? aimg(TYPE_IMG[k], "aicon bicon") : null, el("small", { text: TYPE_LABEL[k] || "Not clear" })]);
       if (k === "none") col.disabled = true;
       else on(col, function () { setType(st.cat === k ? "all" : k); });
       bars.appendChild(col);
@@ -781,7 +789,7 @@
         el("b", { text: fixed.q }), " instead."]));
     }
     if (!r.list.length) {
-      var box = el("div", { cls: "empty card" }, [el("div", { text: "Nothing matches \"" + st.q + "\"." })]);
+      var box = el("div", { cls: "empty card" }, [aimg("cat", "aicon eicon"), el("div", { text: "Nothing matches \"" + st.q + "\"." })]);
       if (r.suggest.length) {
         var fix = r.suggest.filter(function (x) { return x.fix; }), words = r.suggest.filter(function (x) { return !x.fix; });
         [[fix, "Did you mean"], [words, "Search one word"]].forEach(function (g) {
@@ -837,6 +845,7 @@
     }
     if (!list.length) {
       var e = el("div", { cls: "empty card" }, [
+        aimg("cat", "aicon eicon"),
         el("div", { text: st.q ? "Nothing matches \"" + st.q + "\"." : "No groups here with these filters." }),
         el("div", { cls: "muted", text: "Try a town name, a short name like PFA, fewer words, or a different type." })
       ]);

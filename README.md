@@ -157,6 +157,26 @@ by the Tests workflow on every push: alone, and inside a copy of RRT's rules
 (`tests/rules/rrt-base.rules`) to prove the block compiles there and leaves
 RRT's own data alone.
 
+## NGO Darpan (the government registry)
+
+The biggest untapped source. Its own portal gates the directory behind a
+captcha, so we never scrape it; data.gov.in publishes the same registry as
+open datasets, but that portal answers only from India. So the download runs
+on your own computer:
+
+1. Get a free API key at https://data.gov.in (Sign up > My Account > Generate
+   API key).
+2. `python3 tools/darpan_fetch.py YOUR_KEY` writes every NGO with Animal
+   Welfare as a field of work to `scraper/data/darpan_animal.csv`.
+3. `python3 -m scraper.darpan` adds the ones not already listed (spelling
+   differences count as the same group; groups taken off stay off), each
+   linking to its dataset. Commit and push.
+
+"Know a group that's missing?" on the site is the other way in: anyone signed
+in can suggest a group (ngo/dir/suggestions); admins check it in the
+Suggestions tab and publish it (ngo/dir/extras), and the directory merges
+those in on every visit as "Suggested and checked by the Rapid Response team".
+
 ## Base data shipped in the repo
 
 - All Karnataka groups on the AWBI recognised list (as on 31 Mar 2026),
