@@ -522,15 +522,15 @@ service cloud.firestore {
           && ngoEx().keys().hasOnly(["n", "k", "c", "st", "d", "a", "ad", "p", "e", "w", "s", "nt", "sr",
                                      "addedBy", "addedAt"])
           && ngoTextOk(ngoEx().n, 200) && ngoEx().n.size() >= 3
-          && ngoEx().k is list && ngoEx().k.size() <= 3
+          && ngoListOk(ngoEx().k, 200)
           && ngoEx().c is list && ngoEx().c.size() <= 3
           && ngoShortOk(ngoEx().st, 60) && ngoEx().st.size() > 0 && ngoShortOk(ngoEx().d, 60)
           && ngoTextOk(ngoEx().a, 120) && ngoTextOk(ngoEx().ad, 500)
           && ngoListOk(ngoEx().p, 40) && ngoListOk(ngoEx().e, 200)
           && ngoTextOk(ngoEx().w, 300)
-          && ngoEx().s is list && ngoEx().s.size() <= 3
-          && ngoEx().nt is list && ngoEx().nt.size() <= 3
-          && ngoEx().sr is list && ngoEx().sr.size() <= 3
+          && ngoListOk(ngoEx().s, 300)
+          && ngoListOk(ngoEx().nt, 400)
+          && ngoListOk(ngoEx().sr, 300)
           && ngoEx().addedBy == request.auth.uid && ngoEx().addedAt == request.time;
         allow delete: if ngoIsAdmin();
       }
